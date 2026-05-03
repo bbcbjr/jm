@@ -531,7 +531,9 @@ static void read_CBP_and_coeffs_from_NAL_CABAC_420(Macroblock *currMB)
 
   int qp_per, qp_rem;
   VideoParameters *p_Vid = currMB->p_Vid;
-  int smb = ((p_Vid->type==SP_SLICE) && (currMB->is_intra_block == FALSE)) || (p_Vid->type == SI_SLICE && currMB->mb_type == SI4MB);
+  /* Use currSlice->slice_type; p_Vid->type only reflects the last slice
+   * header parsed and is wrong under parallel slice decode. */
+  int smb = ((currSlice->slice_type==SP_SLICE) && (currMB->is_intra_block == FALSE)) || (currSlice->slice_type == SI_SLICE && currMB->mb_type == SI4MB);
 
   int qp_per_uv[2];
   int qp_rem_uv[2];

@@ -674,8 +674,15 @@ void init_slice(VideoParameters *p_Vid, Slice *currSlice)
 {
   int i;
 
+#if (JM_PARALLEL_SLICES == 0)
+  /* Sequential build: keep the legacy p_Vid copies up-to-date for any
+   * code path that still reads through p_Vid. The parallel build skips
+   * these writes -- two threads racing on p_Vid->active_sps/pps would
+   * clobber each other, and every reader inside the slice decode hot
+   * path already uses currSlice->active_sps / currSlice->active_pps. */
   p_Vid->active_sps = currSlice->active_sps;
   p_Vid->active_pps = currSlice->active_pps;
+#endif
 
   currSlice->init_lists (currSlice);
 
@@ -751,7 +758,63 @@ void decode_slice(Slice *currSlice, int current_header)
 
 }
 
+/*!
+ ***********************************************************************
+ * \brief
+ *    decodes one I- or P-frame
+ *
+ ***********************************************************************
+ */
+#if (JM_PARALLEL_SLICES == 1)
+/*!
+ ***********************************************************************
+ * \brief
+ *    Drives slice decode with optional thread parallelism. Falls back
+ *    to sequential when (a) only one slice is present, (b) the picture
+ *    uses 4:4:4 separate colour planes, or (c) thread allocation fails.
+ *    init_slice is always called serially before any decode_slice runs
+ *    so DPB / list-init ordering matches the legacy path.
+ ***********************************************************************
+ */
+static void decode_all_slices_parallel(VideoParameters *p_Vid, Slice **ppSliceList)
+{
+  const int n = p_Vid->iSliceNumOfCurrPic;
+  int iSliceNo = 0;
+  unsigned int sum_dec_mb = 0;
+  int          sum_erc    = 0;
 
+  /* Phase 1 (serial): init each slice. */
+  for (iSliceNo = 0; iSliceNo < n; iSliceNo++)
+    init_slice(p_Vid, ppSliceList[iSliceNo]);
+
+  /* Phase 2: parallel decode unless 4:4:4 separate plane. */
+  if (p_Vid->separate_colour_plane_flag == 0 && n > 1)
+  {
+    #pragma omp parallel for schedule(dynamic) reduction(+:sum_dec_mb, sum_erc)
+    for (iSliceNo = 0; iSliceNo < n; iSliceNo++)
+    {
+      Slice *s = ppSliceList[iSliceNo];
+      decode_slice(s, s->current_header);
+      sum_dec_mb += s->num_dec_mb;
+      sum_erc    += s->erc_mvperMB;
+    }
+    p_Vid->iNumOfSlicesDecoded += n;
+    p_Vid->num_dec_mb          += sum_dec_mb;
+    p_Vid->erc_mvperMB         += sum_erc;
+  }
+  else
+  {
+    for (iSliceNo = 0; iSliceNo < n; iSliceNo++)
+    {
+      Slice *s = ppSliceList[iSliceNo];
+      decode_slice(s, s->current_header);
+      p_Vid->iNumOfSlicesDecoded++;
+      p_Vid->num_dec_mb   += s->num_dec_mb;
+      p_Vid->erc_mvperMB  += s->erc_mvperMB;
+    }
+  }
+}
+#endif
 /*!
  ************************************************************************
  * \brief
@@ -811,8 +874,10 @@ int decode_one_frame(DecoderParams *pDecoder)
   int current_header, iRet;
   Slice *currSlice; // = p_Vid->currentSlice;
   Slice **ppSliceList = p_Vid->ppSliceList;
-  int iSliceNo;
-  
+#if (JM_PARALLEL_SLICES == 0)
+  int iSliceNo = 0;
+#endif
+
   //read one picture first;
   p_Vid->iSliceNumOfCurrPic=0;
   current_header=0;
@@ -928,6 +993,9 @@ int decode_one_frame(DecoderParams *pDecoder)
   init_picture_decoding(p_Vid);
 
   {
+#if (JM_PARALLEL_SLICES == 1)
+    decode_all_slices_parallel(p_Vid, ppSliceList);
+#else
     for(iSliceNo=0; iSliceNo<p_Vid->iSliceNumOfCurrPic; iSliceNo++)
     {
       currSlice = ppSliceList[iSliceNo];
@@ -944,6 +1012,7 @@ int decode_one_frame(DecoderParams *pDecoder)
       p_Vid->num_dec_mb += currSlice->num_dec_mb;
       p_Vid->erc_mvperMB += currSlice->erc_mvperMB;
     }
+#endif
   }
 #if MVC_EXTENSION_ENABLE
   p_Vid->last_dec_view_id = p_Vid->dec_picture->view_id;
@@ -2119,14 +2188,20 @@ void exit_picture(VideoParameters *p_Vid, StorablePicture **dec_picture)
 void ercWriteMBMODEandMV(Macroblock *currMB)
 {
   VideoParameters *p_Vid = currMB->p_Vid;
+  Slice *currSlice = currMB->p_Slice;
   int i, ii, jj, currMBNum = currMB->mbAddrX; //p_Vid->currentSlice->current_mb_nr;
-  StorablePicture *dec_picture = p_Vid->dec_picture;
+  /* Read dec_picture and slice type from the per-slice context rather
+   * than p_Vid: in the parallel-slice build p_Vid->dec_picture can be
+   * stomped on by change_plane_JV (4:4:4 separate plane mode), and
+   * p_Vid->type only ever reflects the most recently parsed slice
+   * header, not the slice this MB actually belongs to. */
+  StorablePicture *dec_picture = currSlice->dec_picture;
   int mbx = xPosMB(currMBNum, dec_picture->size_x), mby = yPosMB(currMBNum, dec_picture->size_x);
   objectBuffer_t *currRegion, *pRegion;
 
   currRegion = p_Vid->erc_object_list + (currMBNum<<2);
 
-  if(p_Vid->type != B_SLICE) //non-B frame
+  if(currSlice->slice_type != B_SLICE) //non-B frame
   {
     for (i=0; i<4; ++i)
     {

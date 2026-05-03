@@ -14,6 +14,7 @@
 #include "contributors.h"
 
 #include <sys/stat.h>
+#include <omp.h>
 
 //#include "global.h"
 #include "win32.h"

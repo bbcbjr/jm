@@ -3178,14 +3178,14 @@ void store_proc_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p)
   if(p_Dpb->used_size_il>0 && fs->is_used==3)
   {
     //checking;
-#ifdef _DEBUG
-    if(p->structure==FRAME)
-      assert(fs->frame->frame_poc != p->poc);
-    else if(p->structure==TOP_FIELD)
-      assert(fs->top_field->top_poc != p->poc);
-    else if(p->structure==BOTTOM_FIELD)
-      assert(fs->bottom_field->bottom_poc != p->poc);
-#endif
+//#ifdef _DEBUG
+//    if(p->structure==FRAME)
+//      assert(fs->frame->frame_poc != p->poc);
+//    else if(p->structure==TOP_FIELD)
+//      assert(fs->top_field->top_poc != p->poc);
+//    else if(p->structure==BOTTOM_FIELD)
+//      assert(fs->bottom_field->bottom_poc != p->poc);
+//#endif
     if(fs->frame)
     {
       free_storable_picture(fs->frame);

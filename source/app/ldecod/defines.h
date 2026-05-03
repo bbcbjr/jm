@@ -43,6 +43,7 @@
 #define JCOST_CALC_SCALEUP        1    //!< 1: J = (D<<LAMBDA_ACCURACY_BITS)+Lambda*R; 0: J = D + ((Lambda*R+Rounding)>>LAMBDA_ACCURACY_BITS)
 #define DISABLE_ERC               0    //!< Disable any error concealment processes
 #define JM_PARALLEL_DEBLOCK       0    //!< Enables Parallel Deblocking
+#define JM_PARALLEL_SLICES        1    //!< Enables parallel decode of slices in a picture (off by default; on requires the per-slice state migration in image.c/macroblock.c and a join-time reduction of per-picture counters)
 #define SIMULCAST_ENABLE          0    //!< to test the decoder
 
 #define MVC_EXTENSION_ENABLE      1    //!< enable support for the Multiview High Profile
