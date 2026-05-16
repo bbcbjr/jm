@@ -11,9 +11,6 @@
  ***********************************************************************
  */
 
-#ifdef BUILD_LDECOD_LIBRARY
-#include "ldecod_api.h"
-#endif
 
 #include "contributors.h"
 
@@ -24,6 +21,9 @@
 #include "win32.h"
 #include "h264decoder.h"
 #include "configfile.h"
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
 
 #define DECOUTPUT_TEST      0
 
@@ -53,22 +53,11 @@ static void Configure(InputParameters *p_Inp, int ac, char *av[])
   strcpy(p_Inp->LeakyBucketParamFile,"leakybucketparam.cfg");    // file where Leaky Bucket parameters (computed by encoder) are stored
 #endif
 #ifdef BUILD_LDECOD_LIBRARY
-  int ac = 1;
-  char **av = (char **)malloc(sizeof(char*) * ac);
-  if (av == NULL)
-  {
-    fprintf(stderr, "Memory allocation failed for av.\n");
-    exit(EXIT_FAILURE);
-  }
-  av[0] = (char *)malloc(1);
-  if (av[0] == NULL)
-  {
-    fprintf(stderr, "Memory allocation failed for av[0].\n");
-    free(av);
-    exit(EXIT_FAILURE);
-  }
+    ParseCommand(p_Inp, 0, NULL);
+#else
+    ParseCommand(p_Inp, ac, av);
 #endif
-  ParseCommand(p_Inp, ac, av);
+
 #ifdef BUILD_LDECOD_LIBRARY
   // ##########################################################################################
   // # Files

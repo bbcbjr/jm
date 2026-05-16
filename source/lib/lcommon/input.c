@@ -24,6 +24,9 @@
 #include "img_io.h"
 #include "memalloc.h"
 #include "fast_memory.h"
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
 
 void buf2img_basic    ( imgpel** imgX, unsigned char* buf, int size_x, int size_y, int o_size_x, int o_size_y, int symbol_size_in_bytes, int bitshift);
 void buf2img_endian   ( imgpel** imgX, unsigned char* buf, int size_x, int size_y, int o_size_x, int o_size_y, int symbol_size_in_bytes, int bitshift);
@@ -407,8 +410,13 @@ static void deinterleave ( unsigned char** input,       //!< input buffer
       deinterleave_v210(input, output, source, symbol_size_in_bytes);
     }
     else {
+#ifdef BUILD_LDECOD_LIBRARY
+      ldecod_api_fatal_exit_msg(LDECOD_ERR_BITSTREAM_FORMAT,
+                                "Unsupported pixel format.");
+#else
       fprintf(stderr, "Unsupported pixel format.\n");
       exit(EXIT_FAILURE);
+#endif
     }
   }
   else if (source->yuv_format == YUV444)  

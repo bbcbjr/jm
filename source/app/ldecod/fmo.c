@@ -20,6 +20,9 @@
 #include "header.h"
 #include "fmo.h"
 #include "fast_memory.h"
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
 
 //#define PRINT_FMO_MAPS
 
@@ -65,8 +68,15 @@ static int FmoGenerateMapUnitToSliceGroupMap (VideoParameters *p_Vid, Slice *cur
     free (p_Vid->MapUnitToSliceGroupMap);
   if ((p_Vid->MapUnitToSliceGroupMap = malloc ((NumSliceGroupMapUnits) * sizeof (int))) == NULL)
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    snprintf(errortext, ET_SIZE,
+        "cannot allocated %d bytes for p_Vid->MapUnitToSliceGroupMap, exit",
+        (int)((pps->pic_size_in_map_units_minus1 + 1) * sizeof(int)));
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL, errortext);
+#else
     printf ("cannot allocated %d bytes for p_Vid->MapUnitToSliceGroupMap, exit\n", (int) ( (pps->pic_size_in_map_units_minus1+1) * sizeof (int)));
     exit (-1);
+#endif
   }
 
   if (pps->num_slice_groups_minus1 == 0)    // only one slice group
@@ -99,8 +109,14 @@ static int FmoGenerateMapUnitToSliceGroupMap (VideoParameters *p_Vid, Slice *cur
     FmoGenerateType6MapUnitMap (p_Vid, NumSliceGroupMapUnits);
     break;
   default:
+#ifdef BUILD_LDECOD_LIBRARY
+    snprintf(errortext, ET_SIZE, "Illegal slice_group_map_type %d , exit \n",
+              (int)pps->slice_group_map_type);
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL, errortext);
+#else
     printf ("Illegal slice_group_map_type %d , exit \n", (int) pps->slice_group_map_type);
     exit (-1);
+#endif
   }
   return 0;
 }
@@ -128,8 +144,15 @@ static int FmoGenerateMbToSliceGroupMap (VideoParameters *p_Vid, Slice *pSlice)
 
   if ((p_Vid->MbToSliceGroupMap = malloc ((p_Vid->PicSizeInMbs) * sizeof (int))) == NULL)
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    snprintf(errortext, ET_SIZE,
+            "cannot allocate %d bytes for p_Vid->MbToSliceGroupMap, exit\n",
+            (int)((p_Vid->PicSizeInMbs) * sizeof(int)));
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL, errortext);
+#else
     printf ("cannot allocate %d bytes for p_Vid->MbToSliceGroupMap, exit\n", (int) ((p_Vid->PicSizeInMbs) * sizeof (int)));
     exit (-1);
+#endif
   }
 
 

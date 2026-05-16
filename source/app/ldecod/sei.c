@@ -22,6 +22,9 @@
 #include "header.h"
 #include "mbuffer.h"
 #include "parset.h"
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
 
 #ifdef __GNUC__
 #ifndef __clang__
@@ -396,8 +399,14 @@ void interpret_spare_pic( byte* payload, int size, VideoParameters *p_Vid )
         }
       break;
     default:
+#ifdef BUILD_LDECOD_LIBRARY
+      snprintf(errortext, ET_SIZE, "Wrong ref_area_indicator %d!",
+                ref_area_indicator);
+      ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL, errortext);
+#else
       printf( "Wrong ref_area_indicator %d!\n", ref_area_indicator );
       exit(0);
+#endif
       break;
     }
 

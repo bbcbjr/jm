@@ -16,6 +16,9 @@
 
 #include "global.h"
 #include "img_io.h"
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
 
 #define FAST_READ 1
 
@@ -139,8 +142,15 @@ int ReadFrameConcatenated (InputParameters *p_Inp, VideoDataFile *input_file, in
   }
   else
   {
+
+#ifdef BUILD_LDECOD_LIBRARY
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL,
+                              "read_one_frame (NOT IMPLEMENTED): pic unit "
+                                  "size on disk must be divisible by 8");
+#else
     printf ("read_one_frame (NOT IMPLEMENTED): pic unit size on disk must be divisible by 8");
     exit (-1);
+#endif
   }
   return file_read;
 }
@@ -193,8 +203,14 @@ int ReadFrameSeparate (InputParameters *p_Inp, VideoDataFile *input_file, int Fr
   }
   else
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL,
+                              "read_one_frame (NOT IMPLEMENTED): pic unit "
+                                  "size on disk must be divisible by 8");
+#else
     printf ("read_one_frame (NOT IMPLEMENTED): pic unit size on disk must be divisible by 8");
     exit (-1);
+#endif
   }
 
   if (vfile != -1)

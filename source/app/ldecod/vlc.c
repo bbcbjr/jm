@@ -7,7 +7,7 @@
  *
  * \author
  *    Main contributors (see contributors.h for copyright, address and affiliation details)
- *    - Inge Lille-Langøy               <inge.lille-langoy@telenor.com>
+ *    - Inge Lille-LangÃ¸y               <inge.lille-langoy@telenor.com>
  *    - Detlev Marpe
  *    - Gabi Blaettermann
  ************************************************************************
@@ -17,7 +17,9 @@
 #include "global.h"
 #include "vlc.h"
 #include "elements.h"
-
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
 
 // A little trick to avoid those horrible #if TRACE all over the source code
 #if TRACE
@@ -774,8 +776,13 @@ int readSyntaxElement_NumCoeffTrailingOnes(SyntaxElement *sym,
     retval = code_from_bitstream_2d(sym, currStream, lentab[vlcnum][0], codtab[vlcnum][0], 17, 4, &code);
     if (retval)
     {
+#ifdef BUILD_LDECOD_LIBRARY
+      ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL,
+                                "ERROR: failed to find NumCoeff/TrailingOnes");
+#else
       printf("ERROR: failed to find NumCoeff/TrailingOnes\n");
       exit(-1);
+#endif
     }
   }
 
@@ -842,8 +849,13 @@ int readSyntaxElement_NumCoeffTrailingOnesChromaDC(VideoParameters *p_Vid, Synta
 
   if (retval)
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL,
+                              "failed to find NumCoeff/TrailingOnes ChromaDC");
+#else
     printf("ERROR: failed to find NumCoeff/TrailingOnes ChromaDC\n");
     exit(-1);
+#endif
   }
 
 #if TRACE
@@ -1041,8 +1053,13 @@ int readSyntaxElement_TotalZeros(SyntaxElement *sym,  Bitstream *currStream)
 
   if (retval)
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL,
+                              "failed to find Total Zeros !cdc");
+#else
     printf("ERROR: failed to find Total Zeros !cdc\n");
     exit(-1);
+#endif
   }
 
 #if TRACE
@@ -1131,8 +1148,13 @@ int readSyntaxElement_TotalZerosChromaDC(VideoParameters *p_Vid, SyntaxElement *
 
   if (retval)
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL,
+                              "failed to find Total Zeros Chroma DC");
+#else
     printf("ERROR: failed to find Total Zeros\n");
     exit(-1);
+#endif
   }
 
 #if TRACE
@@ -1178,8 +1200,12 @@ int readSyntaxElement_Run(SyntaxElement *sym, Bitstream *currStream)
 
   if (retval)
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL, "failed to find Run");
+#else
     printf("ERROR: failed to find Run\n");
     exit(-1);
+#endif
   }
 
 #if TRACE

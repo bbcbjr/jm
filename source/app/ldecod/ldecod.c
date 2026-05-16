@@ -28,7 +28,7 @@
  *     H.264/AVC reference decoder project main()
  *  \author
  *     Main contributors (see contributors.h for copyright, address and affiliation details)
- *     - Inge Lille-Langøy       <inge.lille-langoy@telenor.com>
+ *     - Inge Lille-LangÃ¸y       <inge.lille-langoy@telenor.com>
  *     - Rickard Sjoberg         <rickard.sjoberg@era.ericsson.se>
  *     - Stephan Wenger          <stewe@cs.tu-berlin.de>
  *     - Jani Lainema            <jani.lainema@nokia.com>
@@ -111,8 +111,14 @@ void error(char *text, int code)
     flush_dpb(p_Dec->p_Vid->p_Dpb_layer[1]);
 #endif
   }
-
+#ifdef BUILD_LDECOD_LIBRARY
+  /* Use the _msg variant so the descriptive text propagates back to the
+   * API client via ldecod_api_get_last_error_message(), in addition to
+   * being printed to stderr above. */
+  ldecod_api_fatal_exit_msg(code, text);
+#else
   exit(code);
+#endif
 }
 
 static void reset_dpb( VideoParameters *p_Vid, DecodedPictureBuffer *p_Dpb )
@@ -526,7 +532,7 @@ static void Report(VideoParameters *p_Vid)
     fprintf(stdout," Exit JM %s decoder, ver %s ",JM, VERSION);
     fprintf(stdout,"\n");
   }
-
+#ifndef BUILD_LDECOD_LIBRARY
   // write to log file
   fprintf(stdout," Output status file                     : %s \n",LOGFILE);
   snprintf(string, OUTSTRING_SIZE, "%s", LOGFILE);
@@ -639,6 +645,7 @@ static void Report(VideoParameters *p_Vid)
       p_Vid->number ? ((double)0.001*p_Vid->tot_time/p_Vid->number) : 0.0);
   }
   fclose(p_log);
+#endif
 }
 
 /*!
@@ -1067,7 +1074,11 @@ void free_global_buffers(VideoParameters *p_Vid)
 void report_stats_on_error(void)
 {
   //free_encoder_memory(p_Vid);
+#ifdef BUILD_LDECOD_LIBRARY
+  ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL, "report_stats_on_error");
+#else
   exit (-1);
+#endif
 }
 
 void ClearDecPicList(VideoParameters *p_Vid)

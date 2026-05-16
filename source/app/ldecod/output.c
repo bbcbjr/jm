@@ -21,7 +21,6 @@
 #include "sei.h"
 #include "input.h"
 #include "fast_memory.h"
-
 #ifdef BUILD_LDECOD_LIBRARY
 #include "ldecod_api.h"
 #endif // BUILD_LDECOD_LIBRARY

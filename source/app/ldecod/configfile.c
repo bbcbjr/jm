@@ -64,6 +64,10 @@
 #include "memalloc.h"
 #include "config_common.h"
 #include "configfile.h"
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
+
 #define MAX_ITEMS_TO_PARSE  10000
 
 InputParameters cfgparams;
@@ -98,7 +102,11 @@ void JMDecHelpExit (void)
     "   ldecod  -f curenc1.cfg\n"
     "   ldecod  -f curenc1.cfg -p InputFile=\"e:\\data\\container_qcif_30.264\" -p OutputFile=\"dec.yuv\" -p RefFile=\"Rec.yuv\"\n");
 
+#ifdef BUILD_LDECOD_LIBRARY
+  ldecod_api_fatal_exit(LDECOD_ERR_INVALID_ARG);
+#else
   exit(-1);
+#endif
 }
 
 

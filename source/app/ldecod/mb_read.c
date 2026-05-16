@@ -7,7 +7,7 @@
  *
  * \author
  *    Main contributors (see contributors.h for copyright, address and affiliation details)
- *    - Inge Lille-Langøy               <inge.lille-langoy@telenor.com>
+ *    - Inge Lille-LangÃ¸y               <inge.lille-langoy@telenor.com>
  *    - Rickard Sjoberg                 <rickard.sjoberg@era.ericsson.se>
  *    - Jani Lainema                    <jani.lainema@nokia.com>
  *    - Sebastian Purreiter             <sebastian.purreiter@mch.siemens.de>
@@ -44,6 +44,9 @@
 #include "mb_prediction.h"
 #include "fast_memory.h"
 #include "filehandle.h"
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
 
 #if TRACE
 #define TRACE_STRING(s) strncpy(currSE.tracestring, s, TRACESTRING_SIZE)
@@ -595,8 +598,13 @@ static void init_decoding_engine_IPCM(Slice *currSlice)
     PartitionNumber=3;
   else
   {
+#ifdef BUILD_LDECOD_LIBRARY
+    ldecod_api_fatal_exit_msg(LDECOD_ERR_INTERNAL,
+                              "Partition Mode is not supported\n");
+#else
     printf("Partition Mode is not supported\n");
     exit(1);
+#endif
   }
 
   for(i=0;i<PartitionNumber;++i)
