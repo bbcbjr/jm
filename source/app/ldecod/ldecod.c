@@ -70,6 +70,10 @@
 #include "h264decoder.h"
 #include "dec_statistics.h"
 
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
+
 #define LOGFILE     "log.dec"
 #define DATADECFILE "dataDec.txt"
 #define TRACEFILE   "trace_dec.txt"
@@ -1318,6 +1322,7 @@ int CloseDecoder()
     break;   
   }
 
+#ifndef BUILD_LDECOD_LIBRARY
 #if (MVC_EXTENSION_ENABLE)
   for(i=0;i<MAX_VIEW_NUM;i++)
   {
@@ -1329,6 +1334,7 @@ int CloseDecoder()
 #else
   if(pDecoder->p_Vid->p_out >=0)
     close(pDecoder->p_Vid->p_out);
+#endif
 #endif
 
   if (pDecoder->p_Vid->p_ref != -1)
@@ -1373,6 +1379,10 @@ int CloseDecoder()
 #if (MVC_EXTENSION_ENABLE)
 void OpenOutputFiles(VideoParameters *p_Vid, int view0_id, int view1_id)
 {
+#ifdef BUILD_LDECOD_LIBRARY
+  p_Vid->p_out_mvc[0] = LDECOD_OUTPUT_STREAM_BASE;
+  p_Vid->p_out_mvc[1] = LDECOD_OUTPUT_STREAM_DEPENDENT;
+#else
   InputParameters *p_Inp = p_Vid->p_Inp;
   char out_ViewFileName[2][FILE_NAME_SIZE+15], chBuf[FILE_NAME_SIZE], *pch;  
   if ((strcasecmp(p_Inp->outfile, "\"\"")!=0) && (strlen(p_Inp->outfile)>0))
@@ -1410,6 +1420,7 @@ void OpenOutputFiles(VideoParameters *p_Vid, int view0_id, int view1_id)
       }
     }
   }
+#endif
 }
 #endif
 

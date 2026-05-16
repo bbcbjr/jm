@@ -17,6 +17,10 @@
 #include "memalloc.h" 
 #include "fast_memory.h"
 
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif
+
 static const int IOBUFFERSIZE = 512*1024; //65536;
 
 void malloc_annex_b(VideoParameters *p_Vid, ANNEXB_t **p_annex_b)
@@ -60,7 +64,11 @@ void free_annex_b(ANNEXB_t **p_annex_b)
 */
 static inline size_t getChunk(ANNEXB_t *annex_b)
 {
+#ifdef BUILD_LDECOD_LIBRARY
+   size_t readbytes = annex_b->callback->read(annex_b->callback->opaque, annex_b->iobuffer, annex_b->iIOBufferSize);
+#else
   size_t readbytes = read (annex_b->BitStreamFile, annex_b->iobuffer, annex_b->iIOBufferSize);
+#endif
   if (0==readbytes)
   {
     annex_b->is_eof = TRUE;
@@ -309,11 +317,22 @@ void open_annex_b (char *fn, ANNEXB_t *annex_b)
   {
     error ("open_annex_b: tried to open Annex B file twice",500);
   }
+
+#ifdef BUILD_LDECOD_LIBRARY
+  ldecod_reader_t *base_input = ldecod_api_get_input_stream();
+  if (base_input == NULL)
+#else
   if ((annex_b->BitStreamFile = open(fn, OPENFLAGS_READ)) == -1)
+#endif
   {
     snprintf (errortext, ET_SIZE, "Cannot open Annex B ByteStream file '%s'", fn);
     error(errortext,500);
   }
+
+#ifdef BUILD_LDECOD_LIBRARY
+  annex_b->callback = base_input;
+  annex_b->BitStreamFile = -1;
+#endif
 
   annex_b->iIOBufferSize = IOBUFFERSIZE * sizeof (byte);
   annex_b->iobuffer = malloc (annex_b->iIOBufferSize);
@@ -336,7 +355,9 @@ void close_annex_b(ANNEXB_t *annex_b)
 {
   if (annex_b->BitStreamFile != -1)
   {
+#ifndef BUILD_LDECOD_LIBRARY
     close(annex_b->BitStreamFile);
+#endif
     annex_b->BitStreamFile = - 1;
   }
   free (annex_b->iobuffer);

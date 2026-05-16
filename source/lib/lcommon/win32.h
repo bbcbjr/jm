@@ -43,10 +43,12 @@ typedef int   intptr_t;
 # define  strncasecmp _strnicmp
 
 # define  snprintf _snprintf
+#ifndef BUILD_LDECOD_LIBRARY
 # define  open     _open
 # define  close    _close
 # define  read     _read
 # define  write    _write
+#endif
 # define  lseek    _lseeki64
 # define  fsync    _commit
 # define  tell     _telli64
@@ -86,9 +88,9 @@ typedef int   intptr_t;
 typedef __int64   int64;
 typedef unsigned __int64   uint64;
 # define FORMAT_OFF_T "I64d"
-# ifndef INT64_MIN
-#  define INT64_MIN        (-9223372036854775807i64 - 1i64)
-# endif
+//# ifndef INT64_MIN
+//#  define INT64_MIN        (-9223372036854775807i64 - 1i64)
+//# endif
 #else
 typedef long long int64;
 typedef unsigned long long  uint64;

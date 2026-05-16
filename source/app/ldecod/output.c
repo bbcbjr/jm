@@ -1,4 +1,4 @@
-
+﻿
 /*!
  ************************************************************************
  * \file output.c
@@ -22,11 +22,48 @@
 #include "input.h"
 #include "fast_memory.h"
 
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif // BUILD_LDECOD_LIBRARY
+
 static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_out);
 static void img2buf_byte   (imgpel** imgX, unsigned char* buf, int size_x, int size_y, int symbol_size_in_bytes, int crop_left, int crop_right, int crop_top, int crop_bottom, int iOutStride);
 static void img2buf_normal (imgpel** imgX, unsigned char* buf, int size_x, int size_y, int symbol_size_in_bytes, int crop_left, int crop_right, int crop_top, int crop_bottom, int iOutStride);
 static void img2buf_endian (imgpel** imgX, unsigned char* buf, int size_x, int size_y, int symbol_size_in_bytes, int crop_left, int crop_right, int crop_top, int crop_bottom, int iOutStride);
 
+static int io_write(int p_out, const void *buf, size_t n);
+
+#ifdef BUILD_LDECOD_LIBRARY
+static int io_write(int p_out, const void *buf, size_t n)
+{
+  assert(p_out >= 0);
+
+  switch (p_out)
+  {
+  case LDECOD_OUTPUT_STREAM_BASE:
+  {
+    ldecod_writer_t *writer = ldecod_api_get_base_output();
+    if (writer)
+      return writer->write(writer->opaque, buf, n);
+  } break;
+  case LDECOD_OUTPUT_STREAM_DEPENDENT:
+  {
+    ldecod_writer_t *writer = ldecod_api_get_dep_output();
+    if (writer)
+      return writer->write(writer->opaque, buf, n);
+  } break;
+  default:
+    break;
+  }
+
+  return 0;
+}
+#else
+static int io_write(int p_out, const void *buf, size_t n)
+{
+  return write(p_out, buf, n);
+}
+#endif
 
 /*!
  ************************************************************************
@@ -104,12 +141,30 @@ static void img2buf_normal (imgpel** imgX, unsigned char* buf, int size_x, int s
 
   if ((crop_top || crop_bottom || crop_left || crop_right) || (size != 1))
   {
-    for(i=crop_top; i<size_y-crop_bottom; i++)
+    /* Fast path: 3D Blu-ray and any other 8-bit-output stream. Compiler
+     * vectorizes to SSE2 packuswb / AVX2 vpackuswb. For the narrowing case
+     * (sizeof(imgpel) > 1), this takes the low byte of each pixel; for the
+     * equal case (sizeof(imgpel) == 1), it's a direct byte copy. */
+    if (symbol_size_in_bytes == 1)
     {
-      int ipos = (i - crop_top) * iOutStride;
-      for(j=crop_left; j<size_x-crop_right; j++)
+      const int copy_width = size_x - crop_left - crop_right;
+      for (i = crop_top; i < size_y - crop_bottom; i++) {
+        uint8 *__restrict out = buf + (i - crop_top) * iOutStride;
+        const imgpel *__restrict src = imgX[i] + crop_left;
+        for (j = 0; j < copy_width; j++)
+          out[j] = (uint8)src[j];
+      }
+    }
+    else
+    {
+      for (i = crop_top; i < size_y - crop_bottom; i++)
       {
-        memcpy(buf+(ipos+(j-crop_left)*symbol_size_in_bytes),&(imgX[i][j]), size);
+        const int ipos = (i - crop_top) * iOutStride;
+        for (j = crop_left; j < size_x - crop_right; j++)
+        {
+          memcpy(buf + (ipos + (j - crop_left) * symbol_size_in_bytes),
+                 &(imgX[i][j]), size);
+        }
       }
     }
   }
@@ -562,7 +617,7 @@ static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_
     p_Vid->img2buf (p->imgUV[1], buf, p->size_x_cr, p->size_y_cr, symbol_size_in_bytes, crop_left, crop_right, crop_top, crop_bottom, pDecPic->iYBufStride);
     if (p_out >= 0)
     {
-      ret = write(p_out, buf, (p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)*symbol_size_in_bytes);
+      ret = io_write(p_out, buf, (p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)*symbol_size_in_bytes);
       if (ret != ((p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)*symbol_size_in_bytes))
       {
         error ("write_out_picture: error writing to RGB file", 500);
@@ -589,7 +644,7 @@ static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_
   p_Vid->img2buf (p->imgY, buf, p->size_x, p->size_y, symbol_size_in_bytes, crop_left, crop_right, crop_top, crop_bottom, pDecPic->iYBufStride);
   if(p_out >=0)
   {
-    ret = write(p_out, buf, (p->size_y-crop_bottom-crop_top)*(p->size_x-crop_right-crop_left)*symbol_size_in_bytes);
+    ret = io_write(p_out, buf, (p->size_y-crop_bottom-crop_top)*(p->size_x-crop_right-crop_left)*symbol_size_in_bytes);
     if (ret != ((p->size_y-crop_bottom-crop_top)*(p->size_x-crop_right-crop_left)*symbol_size_in_bytes))
     {
       error ("write_out_picture: error writing to YUV file", 500);
@@ -606,7 +661,7 @@ static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_
     p_Vid->img2buf (p->imgUV[0], buf, p->size_x_cr, p->size_y_cr, symbol_size_in_bytes, crop_left, crop_right, crop_top, crop_bottom, pDecPic->iUVBufStride);
     if(p_out >= 0)
     {
-      ret = write(p_out, buf, (p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)* symbol_size_in_bytes);
+      ret = io_write(p_out, buf, (p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)* symbol_size_in_bytes);
       if (ret != ((p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)* symbol_size_in_bytes))
       {
         error ("write_out_picture: error writing to YUV file", 500);
@@ -620,7 +675,7 @@ static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_
 
       if(p_out >= 0)
       {
-        ret = write(p_out, buf, (p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)*symbol_size_in_bytes);
+        ret = io_write(p_out, buf, (p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)*symbol_size_in_bytes);
         if (ret != ((p->size_y_cr-crop_bottom-crop_top)*(p->size_x_cr-crop_right-crop_left)*symbol_size_in_bytes))
         {
           error ("write_out_picture: error writing to YUV file", 500);
@@ -649,12 +704,12 @@ static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_
       buf = malloc (p->size_x*p->size_y*symbol_size_in_bytes);
       p_Vid->img2buf (p->imgUV[0], buf, p->size_x/2, p->size_y/2, symbol_size_in_bytes, crop_left/2, crop_right/2, crop_top/2, crop_bottom/2, pDecPic->iYBufStride/2);
 
-      ret = write(p_out, buf, symbol_size_in_bytes * (p->size_y-crop_bottom-crop_top)/2 * (p->size_x-crop_right-crop_left)/2 );
+      ret = io_write(p_out, buf, symbol_size_in_bytes * (p->size_y-crop_bottom-crop_top)/2 * (p->size_x-crop_right-crop_left)/2 );
       if (ret != (symbol_size_in_bytes * (p->size_y-crop_bottom-crop_top)/2 * (p->size_x-crop_right-crop_left)/2))
       {
         error ("write_out_picture: error writing to YUV file", 500);
       }
-      ret = write(p_out, buf, symbol_size_in_bytes * (p->size_y-crop_bottom-crop_top)/2 * (p->size_x-crop_right-crop_left)/2 );
+      ret = io_write(p_out, buf, symbol_size_in_bytes * (p->size_y-crop_bottom-crop_top)/2 * (p->size_x-crop_right-crop_left)/2 );
       if (ret != (symbol_size_in_bytes * (p->size_y-crop_bottom-crop_top)/2 * (p->size_x-crop_right-crop_left)/2))
       {
         error ("write_out_picture: error writing to YUV file", 500);

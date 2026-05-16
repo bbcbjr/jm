@@ -11,6 +11,10 @@
  ***********************************************************************
  */
 
+#ifdef BUILD_LDECOD_LIBRARY
+#include "ldecod_api.h"
+#endif
+
 #include "contributors.h"
 
 #include <sys/stat.h>
@@ -32,7 +36,11 @@
 #define DECOUTPUT_VIEW1_FILENAME  "H264_Decoder_Output_View1.yuv"
 
 
+#ifdef BUILD_LDECOD_LIBRARY
+static void Configure(InputParameters *p_Inp, const ldecod_config_t *cfg)
+#else
 static void Configure(InputParameters *p_Inp, int ac, char *av[])
+#endif
 {
   //char *config_filename=NULL;
   //char errortext[ET_SIZE];
@@ -44,8 +52,65 @@ static void Configure(InputParameters *p_Inp, int ac, char *av[])
 #ifdef _LEAKYBUCKET_
   strcpy(p_Inp->LeakyBucketParamFile,"leakybucketparam.cfg");    // file where Leaky Bucket parameters (computed by encoder) are stored
 #endif
-
+#ifdef BUILD_LDECOD_LIBRARY
+  int ac = 1;
+  char **av = (char **)malloc(sizeof(char*) * ac);
+  if (av == NULL)
+  {
+    fprintf(stderr, "Memory allocation failed for av.\n");
+    exit(EXIT_FAILURE);
+  }
+  av[0] = (char *)malloc(1);
+  if (av[0] == NULL)
+  {
+    fprintf(stderr, "Memory allocation failed for av[0].\n");
+    free(av);
+    exit(EXIT_FAILURE);
+  }
+#endif
   ParseCommand(p_Inp, ac, av);
+#ifdef BUILD_LDECOD_LIBRARY
+  // ##########################################################################################
+  // # Files
+  // ##########################################################################################
+  strcpy_s(p_Inp->infile,  FILE_NAME_SIZE, "ldecod-callback://");
+  strcpy_s(p_Inp->outfile, FILE_NAME_SIZE, "ldecod-output://");
+  // RefFile               = "test_rec.yuv"   # Ref sequence (for SNR)
+  // WriteUV               = 1                # Write 4:2:0 chroma components for monochrome streams
+  p_Inp->FileFormat = cfg->bitstream_format;
+  // RefOffset             = 0                # SNR computation offset
+  // POCScale              = 2                # Poc Scale (1 or 2)
+  // ##########################################################################################
+  // # HRD parameters
+  // ##########################################################################################
+  // #R_decoder             = 500000           # Rate_Decoder
+  // #B_decoder             = 104000           # B_decoder
+  // #F_decoder             = 73000            # F_decoder
+  // #LeakyBucketParamFile  = "leakybucketparam.cfg" # LeakyBucket Params
+  // ##########################################################################################
+  // # decoder control parameters
+  // ##########################################################################################
+  // DisplayDecParams       = 0                # 1: Display parameters; 
+  p_Inp->conceal_mode = cfg->concealment_mode;
+  // RefPOCGap              = 2                # Reference POC gap (2: IPP (Default), 4: IbP / IpP)
+  // POCGap                 = 2                # POC gap (2: IPP /IbP/IpP (Default), 4: IPP with frame skip = 1 etc.)
+  p_Inp->silent = cfg->verbose ? 0 : 1;
+  // IntraProfileDeblocking = 1                # Enable Deblocking filter in intra only profiles (0=disable, 1=filter according to SPS parameters)
+  // DecFrmNum              = 0                # Number of frames to be decoded (-n)
+  // ##########################################################################################
+  // # MVC decoding parameters
+  // ##########################################################################################
+  p_Inp->DecodeAllLayers = 1;
+
+  // ##########################################################################################
+  // # Other parameters
+  // ##########################################################################################  
+  //p_Inp->source.yuv_format = (ColorFormat)cfg->output_format_hint;
+  //p_Inp->output.yuv_format = (ColorFormat)cfg->output_format_hint;
+
+  //p_Inp->dpb_plus[0] = cfg->dpb_size_override;
+  //p_Inp->dpb_plus[1] = cfg->dpb_size_override;
+#endif
 
   fprintf(stdout,"----------------------------- JM %s %s -----------------------------\n", VERSION, EXT_VERSION);
   //fprintf(stdout," Decoder config file                    : %s \n",config_filename);
@@ -213,7 +278,11 @@ static int WriteOneFrame(DecodedPicList *pDecPic, int hFileOutput0, int hFileOut
  *    main function for JM decoder
  ***********************************************************************
  */
+#ifdef BUILD_LDECOD_LIBRARY
+int jm_ldecod_run_with_config(const ldecod_config_t *cfg)
+#else
 int main(int argc, char **argv)
+#endif
 {
   int iRet;
   DecodedPicList *pDecPicList;
@@ -231,7 +300,12 @@ int main(int argc, char **argv)
   init_time();
 
   //get input parameters;
+#ifdef BUILD_LDECOD_LIBRARY
+  Configure(&InputParams, cfg);
+#else
   Configure(&InputParams, argc, argv);
+#endif
+
   //open decoder;
   iRet = OpenDecoder(&InputParams);
   if(iRet != DEC_OPEN_NOERR)

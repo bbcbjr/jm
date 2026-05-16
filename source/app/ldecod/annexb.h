@@ -14,6 +14,11 @@
 
 #include "nalucommon.h"
 
+#ifdef BUILD_LDECOD_LIBRARY
+struct ldecod_reader;
+typedef struct ldecod_reader ldecod_reader_t;
+#endif
+
 typedef struct annex_b_struct 
 {
   int  BitStreamFile;                //!< the bit stream file
@@ -25,7 +30,10 @@ typedef struct annex_b_struct
 
   int IsFirstByteStreamNALU;
   int nextstartcodebytes;
-  byte *Buf;  
+  byte *Buf;
+#ifdef BUILD_LDECOD_LIBRARY
+  ldecod_reader_t *callback;
+#endif
 } ANNEXB_t;
 
 extern int  get_annex_b_NALU (VideoParameters *p_Vid, NALU_t *nalu, ANNEXB_t *annex_b);
