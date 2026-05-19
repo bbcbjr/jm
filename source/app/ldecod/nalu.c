@@ -122,7 +122,7 @@ void CheckZeroByteNonVCL(VideoParameters *p_Vid, NALU_t *nalu)
     CheckZeroByte=1;
   if(CheckZeroByte && nalu->startcodeprefix_len==3)   
   {
-    printf("Warning: zero_byte shall exist\n");
+    //printf("Warning: zero_byte shall exist\n");
     //because it is not a very serious problem, we do not exit here
   }
 }
@@ -147,7 +147,7 @@ void CheckZeroByteVCL(VideoParameters *p_Vid, NALU_t *nalu)
   p_Vid->LastAccessUnitExists = 1;
   if(CheckZeroByte && nalu->startcodeprefix_len==3)
   {
-    printf("warning: zero_byte shall exist\n");
+    //printf("warning: zero_byte shall exist\n");
     //because it is not a very serious problem, we do not exit here
   }
 }
