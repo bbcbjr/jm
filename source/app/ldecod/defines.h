@@ -35,14 +35,14 @@
 #define DUMP_DPB                  0    //!< Dump DPB info for debug purposes
 #define PRINTREFLIST              0    //!< Print ref list info for debug purposes
 #define PAIR_FIELDS_IN_OUTPUT     0    //!< Pair field pictures for output purposes
-#define IMGTYPE                   1    //!< Define imgpel size type. 0 implies byte (cannot handle >8 bit depths) and 1 implies unsigned short
-#define ENABLE_FIELD_CTX          1    //!< Enables Field mode related context types for CABAC
-#define ENABLE_HIGH444_CTX        1    //!< Enables High 444 profile context types for CABAC. 
+#define IMGTYPE                   0    //!< Define imgpel size type. 0 implies byte (cannot handle >8 bit depths) and 1 implies unsigned short
+#define ENABLE_FIELD_CTX          0    //!< Enables Field mode related context types for CABAC (Blu-ray is always progressive frame; disable for speed)
+#define ENABLE_HIGH444_CTX        0    //!< Enables High 444 profile context types for CABAC (Blu-ray is always 4:2:0; disable reduces NUM_BLOCK_TYPES 22->10)
 #define ZEROSNR                   0    //!< PSNR computation method
-#define ENABLE_OUTPUT_TONEMAPPING 1    //!< enable tone map the output if tone mapping SEI present
+#define ENABLE_OUTPUT_TONEMAPPING 0    //!< enable tone map the output if tone mapping SEI present (standard Blu-ray has no tone-mapping SEI)
 #define JCOST_CALC_SCALEUP        1    //!< 1: J = (D<<LAMBDA_ACCURACY_BITS)+Lambda*R; 0: J = D + ((Lambda*R+Rounding)>>LAMBDA_ACCURACY_BITS)
 #define DISABLE_ERC               0    //!< Disable any error concealment processes
-#define JM_PARALLEL_DEBLOCK       0    //!< Enables Parallel Deblocking
+#define JM_PARALLEL_DEBLOCK       1    //!< Enables Parallel Deblocking (off by default; on requires the per-slice state migration in image.c/macroblock.c and a join-time reduction of per-picture counters)
 #define JM_PARALLEL_SLICES        1    //!< Enables parallel decode of slices in a picture (off by default; on requires the per-slice state migration in image.c/macroblock.c and a join-time reduction of per-picture counters)
 #define SIMULCAST_ENABLE          0    //!< to test the decoder
 
