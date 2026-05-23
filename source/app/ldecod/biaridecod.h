@@ -155,14 +155,6 @@ JM_FORCEINLINE unsigned int getword(DecodingEnvironmentPtr dep) {
 *    the decoded symbol
 ************************************************************************
 */
-/*!
-************************************************************************
-* \brief
-*    biari_decode_symbol():
-* \return
-*    the decoded symbol
-************************************************************************
-*/
 JM_FORCEINLINE unsigned int biari_decode_symbol(DecodingEnvironment * restrict dep,
                                                 BiContextType * restrict bi_ct)
 {
