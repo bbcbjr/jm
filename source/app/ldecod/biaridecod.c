@@ -93,23 +93,6 @@ static inline unsigned int getbyte(DecodingEnvironmentPtr dep)
 /*!
  ************************************************************************
  * \brief
- *    read two bytes from the bitstream
- ************************************************************************
- */
-static inline unsigned int getword(DecodingEnvironmentPtr dep)
-{
-  int *len = dep->Dcodestrm_len;
-  byte *p_code_strm = &dep->Dcodestrm[*len];
-#if(TRACE==2)
-  fprintf(p_trace, "get_byte: %d\n", *len);
-  fprintf(p_trace, "get_byte: %d\n", *len + 1);
-#endif
-  *len += 2;
-  return ((*p_code_strm<<8) | *(p_code_strm + 1));
-}
-/*!
- ************************************************************************
- * \brief
  *    Initializes the DecodingEnvironment for the arithmetic coder
  ************************************************************************
  */
@@ -132,7 +115,6 @@ void arideco_start_decoding(DecodingEnvironmentPtr dep, unsigned char *code_buff
 #endif
 }
 
-
 /*!
  ************************************************************************
  * \brief
@@ -149,70 +131,6 @@ int arideco_bits_read(DecodingEnvironmentPtr dep)
  return (((*dep->Dcodestrm_len) << 3) - dep->DbitsLeft);
 #endif
 }
-
-
-/*!
-************************************************************************
-* \brief
-*    biari_decode_symbol():
-* \return
-*    the decoded symbol
-************************************************************************
-*/
-unsigned int biari_decode_symbol(DecodingEnvironment *dep, BiContextType *bi_ct )
-{  
-  unsigned int bit    = bi_ct->MPS;
-  unsigned int *value = &dep->Dvalue;
-  unsigned int *range = &dep->Drange;  
-  uint16       *state = &bi_ct->state;
-  unsigned int rLPS   = rLPS_table_64x4[*state][(*range>>6) & 0x03];
-  int *DbitsLeft = &dep->DbitsLeft;
-
-  *range -= rLPS;
-
-  if(*value < (*range << *DbitsLeft))   //MPS
-  {
-    *state = AC_next_state_MPS_64[*state]; // next state 
-    if( *range >= QUARTER )
-    {
-      return (bit);
-    }
-    else 
-    {
-      *range <<= 1;
-      (*DbitsLeft)--;
-    }
-  }
-  else         // LPS 
-  {
-    int renorm = renorm_table_32[(rLPS>>3) & 0x1F];
-    *value -= (*range << *DbitsLeft);
-
-    *range = (rLPS << renorm);
-    (*DbitsLeft) -= renorm;
-
-    bit ^= 0x01;
-    if (!(*state))          // switch meaning of MPS if necessary 
-      bi_ct->MPS ^= 0x01; 
-
-    *state = AC_next_state_LPS_64[*state]; // next state 
-  }
-
-  if( *DbitsLeft > 0 )
-  {     
-    return (bit);
-  } 
-  else
-  {
-    *value <<= 16;
-    *value |=  getword(dep);    // lookahead of 2 bytes: always make sure that bitstream buffer
-    // contains 2 more bytes than actual bitstream
-    (*DbitsLeft) += 16;
-
-    return (bit);
-  }
-}
-
 
 /*!
  ************************************************************************

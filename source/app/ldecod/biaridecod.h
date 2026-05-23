@@ -20,6 +20,7 @@
 #ifndef _BIARIDECOD_H_
 #define _BIARIDECOD_H_
 
+#include "jm_defines.h"
 
 /************************************************************************
  * D e f i n i t i o n s
@@ -96,7 +97,7 @@ static const byte rLPS_table_64x4[64][4]=
 };
 
 
-static const byte AC_next_state_MPS_64[64] =    
+static const byte AC_next_state_MPS_64[64] =
 {
   1,2,3,4,5,6,7,8,9,10,
   11,12,13,14,15,16,17,18,19,20,
@@ -108,7 +109,7 @@ static const byte AC_next_state_MPS_64[64] =
 };
 
 
-static const byte AC_next_state_LPS_64[64] =    
+static const byte AC_next_state_LPS_64[64] =
 {
   0, 0, 1, 2, 2, 4, 4, 5, 6, 7,
   8, 9, 9,11,11,12,13,13,15,15,
@@ -121,13 +122,96 @@ static const byte AC_next_state_LPS_64[64] =
 
 static const byte renorm_table_32[32]={6,5,4,4,3,3,3,3,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 
-
 extern void arideco_start_decoding(DecodingEnvironmentPtr eep, unsigned char *code_buffer, int firstbyte, int *code_len);
 extern int  arideco_bits_read(DecodingEnvironmentPtr dep);
 extern void arideco_done_decoding(DecodingEnvironmentPtr dep);
 extern void biari_init_context (int qp, BiContextTypePtr ctx, const char* ini);
-extern unsigned int biari_decode_symbol(DecodingEnvironment *dep, BiContextType *bi_ct );
 extern unsigned int biari_decode_symbol_eq_prob(DecodingEnvironmentPtr dep);
 extern unsigned int biari_decode_final(DecodingEnvironmentPtr dep);
+
+
+/*!
+ ************************************************************************
+ * \brief
+ *    read two bytes from the bitstream
+ ************************************************************************
+ */
+JM_FORCEINLINE unsigned int getword(DecodingEnvironmentPtr dep) {
+  int *len = dep->Dcodestrm_len;
+  byte *p_code_strm = &dep->Dcodestrm[*len];
+#if (TRACE == 2)
+  fprintf(p_trace, "get_byte: %d\n", *len);
+  fprintf(p_trace, "get_byte: %d\n", *len + 1);
+#endif
+  *len += 2;
+  return ((*p_code_strm << 8) | *(p_code_strm + 1));
+}
+
+/*!
+************************************************************************
+* \brief
+*    biari_decode_symbol():
+* \return
+*    the decoded symbol
+************************************************************************
+*/
+/*!
+************************************************************************
+* \brief
+*    biari_decode_symbol():
+* \return
+*    the decoded symbol
+************************************************************************
+*/
+JM_FORCEINLINE unsigned int biari_decode_symbol(DecodingEnvironment * restrict dep,
+                                                BiContextType * restrict bi_ct)
+{
+  unsigned int range     = dep->Drange;
+  unsigned int value     = dep->Dvalue;
+  int          DbitsLeft = dep->DbitsLeft;
+  unsigned int state     = bi_ct->state;
+  unsigned int MPS       = bi_ct->MPS;
+
+  unsigned int rLPS        = rLPS_table_64x4[state][(range >> 6) & 0x03];
+  range                   -= rLPS;
+  unsigned int scaledRange = range << DbitsLeft;   // compute once, reuse in LPS path
+  unsigned int bit;
+
+  if (value < scaledRange)
+  {
+    bit   = MPS;
+    state = AC_next_state_MPS_64[state];
+    if (range < 0x0100)
+    {
+      range    <<= 1;
+      DbitsLeft -= 1;
+    }
+  }
+  else                                // LPS
+  {
+    int renorm = renorm_table_32[rLPS >> 3];   // & 0x1F is a no-op (rLPS <= 240)
+    value     -= scaledRange;                  // reuse the value we already computed
+    range      = rLPS << renorm;
+    DbitsLeft -= renorm;
+    bit        = MPS ^ 0x01;
+    MPS ^= (state == 0);
+    state      = AC_next_state_LPS_64[state];
+  }
+
+  if (DbitsLeft <= 0)
+  {
+    value     = (value << 16) | getword(dep);
+    DbitsLeft += 16;
+  }
+
+  // Single write-back at the end
+  dep->Drange    = range;
+  dep->Dvalue    = value;
+  dep->DbitsLeft = DbitsLeft;
+  bi_ct->state   = (uint16)state;
+  bi_ct->MPS     = (byte)MPS;
+  return bit;
+}
+
 #endif  // BIARIDECOD_H_
 
