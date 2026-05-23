@@ -42,6 +42,14 @@ static void Configure(InputParameters *p_Inp, const ldecod_config_t *cfg)
 static void Configure(InputParameters *p_Inp, int ac, char *av[])
 #endif
 {
+  // omp setup
+  init_time();
+  omp_set_dynamic(0);
+  omp_set_num_threads(omp_get_num_procs());
+  /* Make idle workers sleep, not spin */
+#ifdef _WIN32
+  _putenv_s("OMP_WAIT_POLICY", "PASSIVE"); /* Windows */
+#endif
   //char *config_filename=NULL;
   //char errortext[ET_SIZE];
   memset(p_Inp, 0, sizeof(InputParameters));
