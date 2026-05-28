@@ -250,8 +250,8 @@ extern int init_img_data(VideoParameters *p_Vid, ImageData *p_ImgData, seq_param
 extern void free_img_data(VideoParameters *p_Vid, ImageData *p_ImgData);
 extern void pad_dec_picture(VideoParameters *p_Vid, StorablePicture *dec_picture);
 extern void pad_buf(imgpel *pImgBuf, int iWidth, int iHeight, int iStride, int iPadX, int iPadY);
-extern void process_picture_in_dpb_s(VideoParameters *p_Vid, StorablePicture *p_pic);
-extern StorablePicture * clone_storable_picture( VideoParameters *p_Vid, StorablePicture *p_pic );
+extern void process_picture_in_dpb_s(VideoParameters *p_Vid, ViewContext *vctx, StorablePicture *p_pic);
+extern StorablePicture * clone_storable_picture( VideoParameters *p_Vid, ViewContext *vctx, StorablePicture *p_pic );
 extern void store_proc_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p);
 #endif
 

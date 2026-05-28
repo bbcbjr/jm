@@ -97,7 +97,7 @@ static void intrapred_chroma_dc(Macroblock *currMB)
   getNonAffNeighbour(currMB, -1,  0, p_Vid->mb_size[IS_CHROMA], &left);
   getNonAffNeighbour(currMB,  0, -1, p_Vid->mb_size[IS_CHROMA], &up);
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag) 
+  if (!currSlice->active_pps->constrained_intra_pred_flag) 
   {
     up_avail      = up.available;
     left_avail    = left.available;
@@ -168,22 +168,22 @@ static void intrapred_chroma_dc(Macroblock *currMB)
 
 static void intrapred_chroma_hor(Macroblock *currMB)
 {
-  VideoParameters *p_Vid = currMB->p_Vid;  
+  VideoParameters *p_Vid = currMB->p_Vid;
+  Slice *currSlice = currMB->p_Slice;
   PixelPos a;  //!< pixel positions p(-1, -1..16)
   int left_avail;
- 
+
   getNonAffNeighbour(currMB, -1, 0, p_Vid->mb_size[IS_CHROMA], &a);
-  
-  if (!p_Vid->active_pps->constrained_intra_pred_flag)
+
+  if (!currSlice->active_pps->constrained_intra_pred_flag)
     left_avail = a.available;
   else
     left_avail = a.available ? currMB->p_Slice->intra_block[a.mb_addr]: 0;
   // Horizontal Prediction
   if (!left_avail )
     error("unexpected HOR_PRED_8 chroma intra prediction mode",-1);
-  else 
+  else
   {
-    Slice *currSlice = currMB->p_Slice;
     int cr_MB_x = p_Vid->mb_cr_size_x;
     int cr_MB_y = p_Vid->mb_cr_size_y;
 
@@ -231,7 +231,7 @@ static void intrapred_chroma_ver(Macroblock *currMB)
   int cr_MB_y = p_Vid->mb_cr_size_y;
   getNonAffNeighbour(currMB, 0, -1, p_Vid->mb_size[IS_CHROMA], &up);
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag)
+  if (!currSlice->active_pps->constrained_intra_pred_flag)
     up_avail      = up.available;
   else
     up_avail = up.available ? currSlice->intra_block[up.mb_addr] : 0;
@@ -268,7 +268,7 @@ static void intrapred_chroma_plane(Macroblock *currMB)
   getNonAffNeighbour(currMB, -1,  0, p_Vid->mb_size[IS_CHROMA], &left);
   getNonAffNeighbour(currMB,  0, -1, p_Vid->mb_size[IS_CHROMA], &up);
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag) 
+  if (!currSlice->active_pps->constrained_intra_pred_flag) 
   {
     up_avail      = up.available;
     left_avail    = left.available;

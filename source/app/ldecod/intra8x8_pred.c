@@ -264,7 +264,7 @@ static inline int intra8x8_dc_pred(Macroblock *currMB,    //!< current macrobloc
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr]: 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -408,7 +408,7 @@ static inline int intra8x8_vert_pred(Macroblock *currMB,    //!< current macrobl
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr] : 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -516,7 +516,7 @@ static inline int intra8x8_hor_pred(Macroblock *currMB,    //!< current macroblo
   getNonAffNeighbour(currMB, ioff    , joff - 1, mb_size, &pix_b);
   getNonAffNeighbour(currMB, ioff - 1, joff - 1, mb_size, &pix_d);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr]: 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -625,7 +625,7 @@ static inline int intra8x8_diag_down_right_pred(Macroblock *currMB,    //!< curr
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr]: 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -773,7 +773,7 @@ static inline int intra8x8_diag_down_left_pred(Macroblock *currMB,    //!< curre
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr]: 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -921,7 +921,7 @@ static inline int intra8x8_vert_right_pred(Macroblock *currMB,    //!< current m
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr]: 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -1076,7 +1076,7 @@ static inline int intra8x8_vert_left_pred(Macroblock *currMB,    //!< current ma
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr] : 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -1229,7 +1229,7 @@ static inline int intra8x8_hor_up_pred(Macroblock *currMB,    //!< current macro
   
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr] : 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;
@@ -1381,7 +1381,7 @@ static inline int intra8x8_hor_down_pred(Macroblock *currMB,    //!< current mac
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     block_available_left     = pix_a.available ? currSlice->intra_block [pix_a.mb_addr] : 0;
     block_available_up       = pix_b.available ? currSlice->intra_block [pix_b.mb_addr] : 0;

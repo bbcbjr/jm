@@ -7,7 +7,7 @@
  *
  * \author
  *    Main contributors (see contributors.h for copyright, address and affiliation details)
- *    - Inge Lille-Langøy               <inge.lille-langoy@telenor.com>
+ *    - Inge Lille-LangÃ¸y               <inge.lille-langoy@telenor.com>
  *    - Rickard Sjoberg                 <rickard.sjoberg@era.ericsson.se>
  *    - Jani Lainema                    <jani.lainema@nokia.com>
  *    - Sebastian Purreiter             <sebastian.purreiter@mch.siemens.de>
@@ -26,6 +26,7 @@
 
 #include "block.h"
 #include "global.h"
+#include "view_context.h"
 #include "mbuffer.h"
 #include "mbuffer_mvc.h"
 #include "elements.h"
@@ -149,7 +150,7 @@ static void prepareListforRefIdx ( Macroblock *currMB, SyntaxElement *currSE, Da
 {  
   if(num_ref_idx_active > 1)
   {
-    if (currMB->p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
+    if (currMB->p_Slice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
     {
       currSE->mapping = linfo_ue;
       if (refidx_present)
@@ -207,7 +208,7 @@ void read_delta_quant(SyntaxElement *currSE, DataPartition *dP, Macroblock *curr
 
   dP = &(currSlice->partArr[partMap[currSE->type]]);
 
-  if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
+  if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
   {
     currSE->mapping = linfo_se;
   }
@@ -676,7 +677,7 @@ Boolean exit_macroblock(Slice *currSlice, int eos_bit)
     if(currSlice->nal_startcode_follows(currSlice, eos_bit) == FALSE)
       return FALSE;
 
-    if(currSlice->slice_type == I_SLICE  || currSlice->slice_type == SI_SLICE || p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CABAC)
+    if(currSlice->slice_type == I_SLICE  || currSlice->slice_type == SI_SLICE || currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CABAC)
       return TRUE;
     if(currSlice->cod_counter <= 0)
       return TRUE;
@@ -979,12 +980,12 @@ void setup_slice_methods(Slice *currSlice)
 
   set_intra_prediction_modes(currSlice);
 
-  if ( currSlice->p_Vid->active_sps->chroma_format_idc==YUV444 && (currSlice->p_Vid->separate_colour_plane_flag == 0) )
+  if ( currSlice->active_sps->chroma_format_idc==YUV444 && (currSlice->p_Vid->separate_colour_plane_flag == 0) )
     currSlice->read_coeff_4x4_CAVLC = read_coeff_4x4_CAVLC_444;
   else
     currSlice->read_coeff_4x4_CAVLC = read_coeff_4x4_CAVLC;
 
-  switch(currSlice->p_Vid->active_pps->entropy_coding_mode_flag)
+  switch(currSlice->active_pps->entropy_coding_mode_flag)
   {
   case CABAC:
     set_read_CBP_and_coeffs_cabac(currSlice);
@@ -1083,7 +1084,7 @@ static void read_motion_info_from_NAL_p_slice (Macroblock *currMB)
   currSE.type = SE_MVD;
   dP = &(currSlice->partArr[partMap[SE_MVD]]);
 
-  if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag) 
+  if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag) 
     currSE.mapping = linfo_se;
   else                                                  
     currSE.reading = currSlice->mb_aff_frame_flag ? read_mvd_CABAC_mbaff : read_MVD_CABAC;
@@ -1150,7 +1151,7 @@ static void read_motion_info_from_NAL_b_slice (Macroblock *currMB)
   currSE.type = SE_MVD;
   dP = &(currSlice->partArr[partMap[SE_MVD]]);
 
-  if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag) 
+  if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag) 
     currSE.mapping = linfo_se;
   else                                                  
     currSE.reading = currSlice->mb_aff_frame_flag ? read_mvd_CABAC_mbaff : read_MVD_CABAC;
@@ -1188,12 +1189,13 @@ static void read_motion_info_from_NAL_b_slice (Macroblock *currMB)
 void check_dp_neighbors (Macroblock *currMB)
 {
   VideoParameters *p_Vid = currMB->p_Vid;
+  Slice *currSlice = currMB->p_Slice;   /* for currSlice->active_pps (G7b) */
   PixelPos up, left;
 
   p_Vid->getNeighbour(currMB, -1,  0, p_Vid->mb_size[1], &left);
   p_Vid->getNeighbour(currMB,  0, -1, p_Vid->mb_size[1], &up);
 
-  if ((currMB->is_intra_block == FALSE) || (!(p_Vid->active_pps->constrained_intra_pred_flag)) )
+  if ((currMB->is_intra_block == FALSE) || (!(currSlice->active_pps->constrained_intra_pred_flag)) )
   {
     if (left.available)
     {
@@ -1357,7 +1359,7 @@ static void init_cur_imgy(VideoParameters *p_Vid,Slice *currSlice,int pl)
   if (p_Vid->separate_colour_plane_flag == 0)
   {
     StorablePicture *vidref = p_Vid->no_reference_picture;
-    int noref = (currSlice->framepoc < p_Vid->recovery_poc);    
+    int noref = (currSlice->framepoc < VCTX(currSlice)->recovery_poc);
     if (pl==PLANE_Y) 
     {
       for (j = 0; j < 6; j++)    // for (j = 0; j < (currSlice->slice_type==B_SLICE?2:1); j++) 

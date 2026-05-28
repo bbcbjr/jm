@@ -32,6 +32,7 @@
 #include "mbuffer_mvc.h"
 #include "fast_memory.h"
 #include "input.h"
+#include "view_context.h"
 
 static void insert_picture_in_dpb    (VideoParameters *p_Vid, FrameStore* fs, StorablePicture* p);
 static int output_one_frame_from_dpb (DecodedPictureBuffer *p_Dpb);
@@ -327,7 +328,7 @@ void init_dpb(VideoParameters *p_Vid, DecodedPictureBuffer *p_Dpb, int type)
   p_Dpb->init_done = 1;
 
   // picture error concealment
-  if(p_Vid->conceal_mode !=0 && !p_Vid->last_out_fs)
+  if(VCTX_DPB(p_Dpb)->conceal_mode !=0 && !p_Vid->last_out_fs)
     p_Vid->last_out_fs = alloc_frame_store();
 
 }
@@ -456,7 +457,7 @@ void free_dpb(DecodedPictureBuffer *p_Dpb)
   p_Dpb->init_done = 0;
 
   // picture error concealment
-  if(p_Vid->conceal_mode != 0 || p_Vid->last_out_fs)
+  if(VCTX_DPB(p_Dpb)->conceal_mode != 0 || p_Vid->last_out_fs)
       free_frame_store(p_Vid->last_out_fs);
 
   if(p_Vid->no_reference_picture)
@@ -848,7 +849,7 @@ void update_pic_num(Slice *currSlice)
   unsigned int i;
   VideoParameters *p_Vid = currSlice->p_Vid;
   DecodedPictureBuffer *p_Dpb = currSlice->p_Dpb;
-  seq_parameter_set_rbsp_t *active_sps = p_Vid->active_sps;
+  seq_parameter_set_rbsp_t *active_sps = currSlice->active_sps;   /* M3-G7e */
 
   int add_top = 0, add_bottom = 0;
   int max_frame_num = 1 << (active_sps->log2_max_frame_num_minus4 + 4);
@@ -1822,7 +1823,7 @@ void store_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p)
   }
 
   // picture error concealment
-  if(p_Vid->conceal_mode != 0)
+  if(VCTX_DPB(p_Dpb)->conceal_mode != 0)
   {
     for(i=0;i<p_Dpb->size;i++)
       if(p_Dpb->fs[i]->is_reference)
@@ -1833,12 +1834,12 @@ void store_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p)
   if (p_Dpb->used_size==p_Dpb->size)
   {
     // picture error concealment
-    if (p_Vid->conceal_mode != 0)
+    if (VCTX_DPB(p_Dpb)->conceal_mode != 0)
       conceal_non_ref_pics(p_Dpb, 2);
 
     remove_unused_frame_from_dpb(p_Dpb);
 
-    if(p_Vid->conceal_mode != 0)
+    if(VCTX_DPB(p_Dpb)->conceal_mode != 0)
       sliding_window_poc_management(p_Dpb, p);
   }
   
@@ -1884,7 +1885,7 @@ void store_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p)
   // picture error concealment
   if (p->idr_flag)
   {
-    p_Vid->earlier_missing_poc = 0;
+    VCTX_DPB(p_Dpb)->earlier_missing_poc = 0;
   }
 
   if (p->structure != FRAME)
@@ -1898,7 +1899,7 @@ void store_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p)
 
   p_Dpb->used_size++;
 
-  if(p_Vid->conceal_mode != 0)
+  if(VCTX_DPB(p_Dpb)->conceal_mode != 0)
     p_Vid->pocs_in_dpb[p_Dpb->used_size-1] = p->poc;
 
   update_ref_list(p_Dpb);
@@ -2113,7 +2114,7 @@ static int output_one_frame_from_dpb(DecodedPictureBuffer *p_Dpb)
 //  printf ("output frame with frame_num #%d, poc %d (dpb. p_Dpb->size=%d, p_Dpb->used_size=%d)\n", p_Dpb->fs[pos]->frame_num, p_Dpb->fs[pos]->frame->poc, p_Dpb->size, p_Dpb->used_size);
 
   // picture error concealment
-  if(p_Vid->conceal_mode != 0)
+  if(VCTX_DPB(p_Dpb)->conceal_mode != 0)
   {
     if(p_Dpb->last_output_poc == 0)
     {
@@ -2135,7 +2136,7 @@ static int output_one_frame_from_dpb(DecodedPictureBuffer *p_Dpb)
 #endif
 
   // picture error concealment
-  if(p_Vid->conceal_mode == 0)
+  if(VCTX_DPB(p_Dpb)->conceal_mode == 0)
   {
     if (p_Dpb->last_output_poc >= poc)
     {
@@ -2170,8 +2171,8 @@ void flush_dpb(DecodedPictureBuffer *p_Dpb)
   // printf("Flush remaining frames from the dpb. p_Dpb->size=%d, p_Dpb->used_size=%d\n",p_Dpb->size,p_Dpb->used_size);
   if(!p_Dpb->init_done)
     return;
-//  if(p_Vid->conceal_mode == 0)
-  if (p_Vid->conceal_mode != 0)
+//  if(VCTX_DPB(p_Dpb)->conceal_mode == 0)
+  if (VCTX_DPB(p_Dpb)->conceal_mode != 0)
     conceal_non_ref_pics(p_Dpb, 0);
 
   // mark all frames unused
@@ -2201,8 +2202,8 @@ void flush_dpbs(DecodedPictureBuffer **p_Dpb_layers, int nLayers)
   // diagnostics
   // printf("Flush remaining frames from the dpb. p_Dpb->size=%d, p_Dpb->used_size=%d\n",p_Dpb->size,p_Dpb->used_size);
 
-//  if(p_Vid->conceal_mode == 0)
-  if (p_Vid->conceal_mode != 0)
+//  if(VCTX_DPB(p_Dpb_layers[0])->conceal_mode == 0)
+  if (VCTX_DPB(p_Dpb_layers[0])->conceal_mode != 0)
   {
     conceal_non_ref_pics(p_Dpb_layers[0], 0);
   }
@@ -2715,7 +2716,7 @@ void free_ref_pic_list_reordering_buffer(Slice *currSlice)
  */
 void fill_frame_num_gap(VideoParameters *p_Vid, Slice *currSlice)
 {
-  seq_parameter_set_rbsp_t *active_sps = p_Vid->active_sps;
+  seq_parameter_set_rbsp_t *active_sps = currSlice->active_sps;   /* M3-G7e */
   
   int CurrFrameNum;
   int UnusedShortTermFrameNum;
@@ -2961,15 +2962,17 @@ void append_interview_list(DecodedPictureBuffer *p_Dpb,
 
 #endif
 
-void process_picture_in_dpb_s(VideoParameters *p_Vid, StorablePicture *p_pic)
+void process_picture_in_dpb_s(VideoParameters *p_Vid, ViewContext *vctx, StorablePicture *p_pic)
 {
   //InputParameters *p_Inp = p_Vid->p_Inp;
-  ImageData *p_img_out = &p_Vid->tempData3;
+  // tempData3 lives on the dependent view's ViewContext (M3-G2). vctx is
+  // passed in by init_mvc_picture from VCTX(currSlice).
+  ImageData *p_img_out = &vctx->tempData3;
   imgpel***  d_img;
   int i;
 
-  if(p_Vid->tempData3.frm_data[0] == NULL)
-    init_img_data( p_Vid, &(p_Vid->tempData3), p_Vid->active_sps);
+  if(vctx->tempData3.frm_data[0] == NULL)
+    init_img_data( p_Vid, &(vctx->tempData3), p_Vid->active_sps);
 
   if (p_pic->structure == FRAME)
   {
@@ -3229,7 +3232,7 @@ void store_proc_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p)
  *    Clone an encoded frame picture structure
  ************************************************************************
  */
-StorablePicture * clone_storable_picture( VideoParameters *p_Vid, StorablePicture *p_pic )
+StorablePicture * clone_storable_picture( VideoParameters *p_Vid, ViewContext *vctx, StorablePicture *p_pic )
 {
   int i, j;
   int nplane;
@@ -3291,25 +3294,25 @@ StorablePicture * clone_storable_picture( VideoParameters *p_Vid, StorablePictur
     p_stored_pic->frame_crop_bottom_offset = p_pic->frame_crop_bottom_offset;
   }
   
-  // store BL reconstruction
-  //memcpy((void *)p_stored_pic->imgY[0], (void *)p_Vid->tempData3.frm_data[0][0], p_pic->size_x * p_pic->size_y * sizeof(imgpel));
+  // store BL reconstruction (tempData3 now per-view, M3-G2)
+  //memcpy((void *)p_stored_pic->imgY[0], (void *)vctx->tempData3.frm_data[0][0], p_pic->size_x * p_pic->size_y * sizeof(imgpel));
 
   ostride[0] = p_stored_pic->iLumaStride;
   ostride[1] = p_stored_pic->iChromaStride;
   if (p_stored_pic->structure == FRAME)
   {
-    istride = p_Vid->tempData3.frm_stride;
-    img_in  = p_Vid->tempData3.frm_data;
+    istride = vctx->tempData3.frm_stride;
+    img_in  = vctx->tempData3.frm_data;
   }
   else if (p_stored_pic->structure == TOP_FIELD)
   {
-    istride = p_Vid->tempData3.top_stride;
-    img_in  = p_Vid->tempData3.top_data;
+    istride = vctx->tempData3.top_stride;
+    img_in  = vctx->tempData3.top_data;
   }
   else
   {
-    istride = p_Vid->tempData3.bot_stride;
-    img_in  = p_Vid->tempData3.bot_data;
+    istride = vctx->tempData3.bot_stride;
+    img_in  = vctx->tempData3.bot_data;
   }
 
   copy_img_data(&p_stored_pic->imgY[0][0], &img_in[0][0][0], ostride[0], istride[0], p_pic->size_y, p_pic->size_x * sizeof(imgpel)); 
@@ -3318,8 +3321,8 @@ StorablePicture * clone_storable_picture( VideoParameters *p_Vid, StorablePictur
 
   if (p_Vid->active_sps->chroma_format_idc != YUV400)
   {    
-    //memcpy((void *)p_stored_pic->imgUV[0][0], (void *)p_Vid->tempData3.frm_data[1][0], p_pic->size_x_cr * p_pic->size_y_cr * sizeof(imgpel));
-    //memcpy((void *)p_stored_pic->imgUV[1][0], (void *)p_Vid->tempData3.frm_data[2][0], p_pic->size_x_cr * p_pic->size_y_cr * sizeof(imgpel));
+    //memcpy((void *)p_stored_pic->imgUV[0][0], (void *)vctx->tempData3.frm_data[1][0], p_pic->size_x_cr * p_pic->size_y_cr * sizeof(imgpel));
+    //memcpy((void *)p_stored_pic->imgUV[1][0], (void *)vctx->tempData3.frm_data[2][0], p_pic->size_x_cr * p_pic->size_y_cr * sizeof(imgpel));
     copy_img_data(&p_stored_pic->imgUV[0][0][0], &img_in[1][0][0], ostride[1], istride[1], p_pic->size_y_cr, p_pic->size_x_cr*sizeof(imgpel));
     pad_buf(*p_stored_pic->imgUV[0], p_stored_pic->size_x_cr, p_stored_pic->size_y_cr, p_stored_pic->iChromaStride, p_Vid->iChromaPadX, p_Vid->iChromaPadY);
     copy_img_data(&p_stored_pic->imgUV[1][0][0], &img_in[2][0][0], ostride[1], istride[2], p_pic->size_y_cr, p_pic->size_x_cr*sizeof(imgpel));

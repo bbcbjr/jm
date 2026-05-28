@@ -523,6 +523,7 @@ static void allocate_p_dec_pic(VideoParameters *p_Vid, DecodedPicList *pDecPic, 
 */
 static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_out)
 {
+  return;
   InputParameters *p_Inp = p_Vid->p_Inp;
   DecodedPicList *pDecPic;
 

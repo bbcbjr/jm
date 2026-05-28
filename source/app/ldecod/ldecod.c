@@ -72,6 +72,7 @@
 #include "jm_simd.h"
 #include "jm_threads.h"
 #include "jm_nalu_queue.h"
+#include "view_context.h"
 
 #ifdef BUILD_LDECOD_LIBRARY
 #include "ldecod_api.h"
@@ -133,6 +134,56 @@ static void reset_dpb( VideoParameters *p_Vid, DecodedPictureBuffer *p_Dpb )
 /*!
  ***********************************************************************
  * \brief
+ *    Allocate a per-view decode context. Scaffolding only at this
+ *    milestone (M3-scaffold): no per-view fields have been migrated off
+ *    VideoParameters yet, so the struct is returned zeroed except for
+ *    its identity fields and the last_dec_layer_id sentinel.
+ ***********************************************************************
+ */
+ViewContext *alloc_view_context (VideoParameters *p_Vid, int layer_id)
+{
+  ViewContext *vctx = (ViewContext *) calloc(1, sizeof(ViewContext));
+  if (vctx == NULL)
+    no_mem_exit("alloc_view_context: vctx");
+
+  vctx->view_id           = layer_id;
+  vctx->layer_id          = layer_id;
+  vctx->p_Vid             = p_Vid;
+  // Match the sentinel used today on p_Vid->last_dec_layer_id (set to -1
+  // by init() in ldecod.c so the first init_layer_arrays() call is not
+  // short-circuited). Field migrations in later M3 steps will start
+  // reading this from the vctx instead.
+  vctx->last_dec_layer_id = -1;
+  // Match the per-view init that used to live on p_Vid->recovery_poc
+  // (set to INT_MAX as "no recovery point seen"). Migrated to ViewContext
+  // in M3-G3 because recovery_poc is computed from this view's framepoc.
+  vctx->recovery_poc      = 0x7fffffff;
+  return vctx;
+}
+
+/*!
+ ***********************************************************************
+ * \brief
+ *    Tear down a per-view decode context. Frees any per-view owned
+ *    allocations (currently tempData3; more added as field migrations
+ *    progress) before releasing the struct itself.
+ ***********************************************************************
+ */
+void free_view_context (ViewContext *vctx)
+{
+  if (vctx == NULL)
+    return;
+  // tempData3 is lazily allocated by process_picture_in_dpb_s for the
+  // dependent view's inter-view clone scratch. free_img_data is NULL-safe
+  // on per-plane buffers, so calling it on a never-populated tempData3
+  // (e.g. the base view's, or single-view streams) is a no-op.
+  free_img_data(vctx->p_Vid, &vctx->tempData3);
+  free(vctx);
+}
+
+/*!
+ ***********************************************************************
+ * \brief
  *    Allocate the Video Parameters structure
  * \par  Output:
  *    Video Parameters VideoParameters *p_Vid
@@ -163,6 +214,11 @@ static void alloc_video_params( VideoParameters **p_Vid)
     if(((*p_Vid)->p_LayerPar[i] = (LayerParameters *)calloc(1, sizeof(LayerParameters))) == NULL)
       no_mem_exit("alloc_video_params:p_Vid->p_LayerPar[i]");
     ((*p_Vid)->p_LayerPar[i])->layer_id = i;
+
+    // Stage 2 scaffold: per-view decode context. Allocated but not yet
+    // consulted by the decode path (field migrations land group-by-group
+    // in subsequent M3 steps).
+    (*p_Vid)->p_view_ctx[i] = alloc_view_context(*p_Vid, i);
   }
   (*p_Vid)->global_init_done[0] = (*p_Vid)->global_init_done[1] = 0;
 
@@ -273,7 +329,13 @@ static void free_img( VideoParameters *p_Vid)
         free(p_Vid->p_LayerPar[i]);
         p_Vid->p_LayerPar[i] = NULL;
       }
-    }    
+      // Stage 2 scaffold: tear down per-view decode context.
+      if(p_Vid->p_view_ctx[i])
+      {
+        free_view_context(p_Vid->p_view_ctx[i]);
+        p_Vid->p_view_ctx[i] = NULL;
+      }
+    }
     if (p_Vid->snr != NULL)
     {
       free (p_Vid->snr);
@@ -363,7 +425,7 @@ static void init(VideoParameters *p_Vid)  //!< video parameters
 
   p_Vid->recovery_point = 0;
   p_Vid->recovery_point_found = 0;
-  p_Vid->recovery_poc = 0x7fffffff; /* set to a max value */
+  // recovery_poc is now per-view; initialised in alloc_view_context (M3-G3).
 
   p_Vid->idr_psnr_number = p_Inp->ref_offset;
   p_Vid->psnr_number=0;
@@ -420,7 +482,6 @@ static void init(VideoParameters *p_Vid)  //!< video parameters
 
   p_Vid->iPostProcess = 0;
   p_Vid->bDeblockEnable = 0x3;
-  p_Vid->last_dec_view_id = -1;
   p_Vid->last_dec_layer_id = -1;
 
 #if ENABLE_DEC_STATS
@@ -1082,10 +1143,8 @@ void free_global_buffers(VideoParameters *p_Vid)
     free_storable_picture(p_Vid->dec_picture);
     p_Vid->dec_picture = NULL;
   }
-#if MVC_EXTENSION_ENABLE
-  if(p_Vid->active_subset_sps && p_Vid->active_subset_sps->sps.Valid && (p_Vid->active_subset_sps->sps.profile_idc==MVC_HIGH||p_Vid->active_subset_sps->sps.profile_idc == STEREO_HIGH))
-    free_img_data( p_Vid, &(p_Vid->tempData3) );
-#endif
+  // tempData3 was moved into ViewContext (M3-G2); free_view_context now
+  // owns its teardown.
 }
 
 void report_stats_on_error(void)
@@ -1170,7 +1229,14 @@ int OpenDecoder(InputParameters *p_Inp)
   pDecoder = p_Dec;
   //Configure (pDecoder->p_Vid, pDecoder->p_Inp, argc, argv);
   memcpy(pDecoder->p_Inp, p_Inp, sizeof(InputParameters));
-  pDecoder->p_Vid->conceal_mode = p_Inp->conceal_mode;
+  // conceal_mode moved to ViewContext (M3-G4); seed both view contexts from
+  // the shared input config so each view starts in the user-requested mode.
+  {
+    int _v;
+    for (_v = 0; _v < MAX_NUM_DPB_LAYERS; _v++)
+      if (pDecoder->p_Vid->p_view_ctx[_v])
+        pDecoder->p_Vid->p_view_ctx[_v]->conceal_mode = p_Inp->conceal_mode;
+  }
   pDecoder->p_Vid->ref_poc_gap = p_Inp->ref_poc_gap;
   pDecoder->p_Vid->poc_gap = p_Inp->poc_gap;
 #if TRACE
@@ -1268,7 +1334,7 @@ int OpenDecoder(InputParameters *p_Inp)
   fprintf(pDecoder->p_Vid->fpDbg, "\ndecoder is opened.\n");
 #endif
 
-  /* Initialize SIMD dispatch table. Probes CPU features once
+  /* Stage 3a: initialize SIMD dispatch table. Probes CPU features once
    * and populates jm_simd.<kernel> pointers. Currently fills all slots
    * with scalar implementations (no SIMD kernels wired yet -- Stage 3b
    * adds them). Safe to call multiple times. */
@@ -1276,7 +1342,7 @@ int OpenDecoder(InputParameters *p_Inp)
   if (pDecoder->p_Inp->silent == FALSE)
     jm_simd_print_info();
 
-  /* Spawn the demux thread now that the bitstream is
+  /* Stage 2 M4-P2: spawn the demux thread now that the bitstream is
    * open and ready. It runs until EOS (closes the queue) or
    * jm_demux_stop() in CloseDecoder. */
   jm_demux_start(pDecoder->p_Vid);
@@ -1319,7 +1385,7 @@ int FinitDecoder(DecodedPicList **ppDecPicList)
   DecoderParams *pDecoder = p_Dec;
   if(!pDecoder)
     return DEC_GEN_NOERR;
-  /* Ensure the demux thread has stopped before
+  /* Stage 2 M4-P2: ensure the demux thread has stopped before
    * reset_annex_b touches p_Vid->annex_b below. No-op if demux already
    * exited on EOS (the common case). */
   jm_demux_stop(pDecoder->p_Vid);
@@ -1351,7 +1417,7 @@ int CloseDecoder()
   if(!pDecoder)
     return DEC_CLOSE_NOERR;
 
-  /* Stop the demux thread BEFORE close_annex_b. The
+  /* Stage 2 M4-P2: stop the demux thread BEFORE close_annex_b. The
    * demux thread reads from p_Vid->annex_b; once joined, nothing else
    * touches the bitstream and it's safe to close. */
   jm_demux_stop(pDecoder->p_Vid);

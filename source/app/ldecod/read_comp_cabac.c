@@ -578,7 +578,7 @@ static void read_CBP_and_coeffs_from_NAL_CABAC_420(Macroblock *currMB)
     //============= Transform size flag for INTER MBs =============
     //-------------------------------------------------------------
     need_transform_size_flag = (((currMB->mb_type >= 1 && currMB->mb_type <= 3)||
-      (IS_DIRECT(currMB) && p_Vid->active_sps->direct_8x8_inference_flag) ||
+      (IS_DIRECT(currMB) && currSlice->active_sps->direct_8x8_inference_flag) ||
       (currMB->NoMbPartLessThan8x8Flag))
       && currMB->mb_type != I8MB && currMB->mb_type != I4MB
       && (currMB->cbp&15)
@@ -988,7 +988,7 @@ static void read_CBP_and_coeffs_from_NAL_CABAC_400(Macroblock *currMB)
     //============= Transform size flag for INTER MBs =============
     //-------------------------------------------------------------
     need_transform_size_flag = (((currMB->mb_type >= 1 && currMB->mb_type <= 3)||
-      (IS_DIRECT(currMB) && p_Vid->active_sps->direct_8x8_inference_flag) ||
+      (IS_DIRECT(currMB) && currSlice->active_sps->direct_8x8_inference_flag) ||
       (currMB->NoMbPartLessThan8x8Flag))
       && currMB->mb_type != I8MB && currMB->mb_type != I4MB
       && (currMB->cbp&15)
@@ -1205,7 +1205,7 @@ static void read_CBP_and_coeffs_from_NAL_CABAC_444(Macroblock *currMB)
     //============= Transform size flag for INTER MBs =============
     //-------------------------------------------------------------
     need_transform_size_flag = (((currMB->mb_type >= 1 && currMB->mb_type <= 3)||
-      (IS_DIRECT(currMB) && p_Vid->active_sps->direct_8x8_inference_flag) ||
+      (IS_DIRECT(currMB) && currSlice->active_sps->direct_8x8_inference_flag) ||
       (currMB->NoMbPartLessThan8x8Flag))
       && currMB->mb_type != I8MB && currMB->mb_type != I4MB
       && (currMB->cbp&15)
@@ -1522,7 +1522,7 @@ static void read_CBP_and_coeffs_from_NAL_CABAC_422(Macroblock *currMB)
     //============= Transform size flag for INTER MBs =============
     //-------------------------------------------------------------
     need_transform_size_flag = (((currMB->mb_type >= 1 && currMB->mb_type <= 3)||
-      (IS_DIRECT(currMB) && p_Vid->active_sps->direct_8x8_inference_flag) ||
+      (IS_DIRECT(currMB) && currSlice->active_sps->direct_8x8_inference_flag) ||
       (currMB->NoMbPartLessThan8x8Flag))
       && currMB->mb_type != I8MB && currMB->mb_type != I4MB
       && (currMB->cbp&15)
@@ -1894,7 +1894,7 @@ static void read_CBP_and_coeffs_from_NAL_CABAC_422(Macroblock *currMB)
 
 void set_read_CBP_and_coeffs_cabac(Slice *currSlice)
 {
-  switch (currSlice->p_Vid->active_sps->chroma_format_idc)
+  switch (currSlice->active_sps->chroma_format_idc)
   {
   case YUV444:
     if (currSlice->p_Vid->separate_colour_plane_flag == 0)

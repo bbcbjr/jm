@@ -990,7 +990,7 @@ void interpret_dec_ref_pic_marking_repetition_info( byte* payload, int size, Vid
   original_idr_flag     = read_u_1 (    "SEI: original_idr_flag"    , buf, &p_Dec->UsedBits);
   original_frame_num    = read_ue_v(    "SEI: original_frame_num"   , buf, &p_Dec->UsedBits);
 
-  if ( !p_Vid->active_sps->frame_mbs_only_flag )
+  if ( !pSlice->active_sps->frame_mbs_only_flag )   /* M3-G7f */
   {
     original_field_pic_flag = read_u_1 ( "SEI: original_field_pic_flag", buf, &p_Dec->UsedBits);
     if ( original_field_pic_flag )

@@ -90,7 +90,7 @@ static void read_ipred_8x8_modes_mbaff(Macroblock *currMB)
   TRACE_STRING("intra4x4_pred_mode");
   dP = &(currSlice->partArr[partMap[SE_INTRAPREDMODE]]);
 
-  if (!(p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
+  if (!(currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
     currSE.reading = readIntraPredMode_CABAC;
 
   for(b8 = 0; b8 < 4; ++b8)  //loop 8x8 blocks
@@ -101,7 +101,7 @@ static void read_ipred_8x8_modes_mbaff(Macroblock *currMB)
     bx = ((b8 & 0x01) << 1);
     bi = currMB->block_x + bx;
     //get from stream
-    if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
+    if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
       readSyntaxElement_Intra4x4PredictionMode(&currSE, dP->bitstream);
     else
     {
@@ -114,7 +114,7 @@ static void read_ipred_8x8_modes_mbaff(Macroblock *currMB)
 
     //get from array and decode
 
-    if (p_Vid->active_pps->constrained_intra_pred_flag)
+    if (currSlice->active_pps->constrained_intra_pred_flag)
     {
       left_block.available = left_block.available ? currSlice->intra_block[left_block.mb_addr] : 0;
       top_block.available  = top_block.available  ? currSlice->intra_block[top_block.mb_addr]  : 0;
@@ -164,7 +164,7 @@ static void read_ipred_8x8_modes(Macroblock *currMB)
   TRACE_STRING("intra4x4_pred_mode");
   dP = &(currSlice->partArr[partMap[SE_INTRAPREDMODE]]);
 
-  if (!(p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
+  if (!(currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
     currSE.reading = readIntraPredMode_CABAC;
 
   get4x4Neighbour(currMB, -1,  0, p_Vid->mb_size[IS_LUMA], &left_mb);
@@ -181,7 +181,7 @@ static void read_ipred_8x8_modes(Macroblock *currMB)
     bi = currMB->block_x + bx;
 
     //get from stream
-    if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
+    if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
       readSyntaxElement_Intra4x4PredictionMode(&currSE, dP->bitstream);
     else
     {
@@ -194,7 +194,7 @@ static void read_ipred_8x8_modes(Macroblock *currMB)
     
     //get from array and decode
 
-    if (p_Vid->active_pps->constrained_intra_pred_flag)
+    if (currSlice->active_pps->constrained_intra_pred_flag)
     {
       left_block.available = left_block.available ? currSlice->intra_block[left_block.mb_addr] : 0;
       top_block.available  = top_block.available  ? currSlice->intra_block[top_block.mb_addr]  : 0;
@@ -245,7 +245,7 @@ static void read_ipred_4x4_modes_mbaff(Macroblock *currMB)
   TRACE_STRING("intra4x4_pred_mode");
   dP = &(currSlice->partArr[partMap[SE_INTRAPREDMODE]]);
 
-  if (!(p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
+  if (!(currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
     currSE.reading = readIntraPredMode_CABAC;
 
   for(b8 = 0; b8 < 4; ++b8)  //loop 8x8 blocks
@@ -260,7 +260,7 @@ static void read_ipred_4x4_modes_mbaff(Macroblock *currMB)
         bx = ((b8 & 1) << 1) + i;
         bi = currMB->block_x + bx;
         //get from stream
-        if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
+        if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
           readSyntaxElement_Intra4x4PredictionMode(&currSE, dP->bitstream);
         else
         {
@@ -273,7 +273,7 @@ static void read_ipred_4x4_modes_mbaff(Macroblock *currMB)
 
         //get from array and decode
 
-        if (p_Vid->active_pps->constrained_intra_pred_flag)
+        if (currSlice->active_pps->constrained_intra_pred_flag)
         {
           left_block.available = left_block.available ? currSlice->intra_block[left_block.mb_addr] : 0;
           top_block.available  = top_block.available  ? currSlice->intra_block[top_block.mb_addr]  : 0;
@@ -334,7 +334,7 @@ static void read_ipred_4x4_modes(Macroblock *currMB)
   TRACE_STRING("intra4x4_pred_mode");
   dP = &(currSlice->partArr[partMap[SE_INTRAPREDMODE]]);
 
-  if (!(p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
+  if (!(currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag))
     currSE.reading = readIntraPredMode_CABAC;
 
   get4x4Neighbour(currMB, -1,  0, p_Vid->mb_size[IS_LUMA], &left_mb);
@@ -352,7 +352,7 @@ static void read_ipred_4x4_modes(Macroblock *currMB)
         bx = ((b8 & 1) << 1) + i;
         bi = currMB->block_x + bx;
         //get from stream
-        if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
+        if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag)
           readSyntaxElement_Intra4x4PredictionMode(&currSE, dP->bitstream);
         else
         {
@@ -365,7 +365,7 @@ static void read_ipred_4x4_modes(Macroblock *currMB)
 
         //get from array and decode
 
-        if (p_Vid->active_pps->constrained_intra_pred_flag)
+        if (currSlice->active_pps->constrained_intra_pred_flag)
         {
           left_block.available = left_block.available ? currSlice->intra_block[left_block.mb_addr] : 0;
           top_block.available  = top_block.available  ? currSlice->intra_block[top_block.mb_addr]  : 0;
@@ -434,7 +434,7 @@ static void read_ipred_modes(Macroblock *currMB)
     TRACE_STRING("intra_chroma_pred_mode");
     dP = &(currSlice->partArr[partMap[SE_INTRAPREDMODE]]);
 
-    if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag) 
+    if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC || dP->bitstream->ei_flag) 
       currSE.mapping = linfo_ue;
     else
       currSE.reading = readCIPredMode_CABAC;
@@ -636,7 +636,7 @@ static void read_IPCM_coeffs_from_NAL(Slice *currSlice, struct datapartition_dec
 
   //For CABAC, we don't need to read bits to let stream byte aligned
   //  because we have variable for integer bytes position
-  if(p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CABAC)
+  if(currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CABAC)
   {
     readIPCM_CABAC(currSlice, dP);
     init_decoding_engine_IPCM(currSlice);
@@ -721,9 +721,10 @@ static inline void SetB8Mode (Macroblock* currMB, int value, int i)
 static inline void reset_coeffs(Macroblock *currMB)
 {
   VideoParameters *p_Vid = currMB->p_Vid;
+  Slice *currSlice = currMB->p_Slice;   /* for currSlice->active_pps (G7b) */
 
   // CAVLC
-  if (p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC)
+  if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CAVLC)
     fast_memset(p_Vid->nz_coeff[currMB->mbAddrX][0][0], 0, 3 * BLOCK_PIXELS * sizeof(byte));
 }
 
@@ -870,7 +871,7 @@ static void read_skip_macroblock(Macroblock *currMB)
 {
   currMB->luma_transform_size_8x8_flag = FALSE;
 
-  if(currMB->p_Vid->active_pps->constrained_intra_pred_flag)
+  if(currMB->p_Slice->active_pps->constrained_intra_pred_flag)
   {
     int mb_nr = currMB->mbAddrX; 
     currMB->p_Slice->intra_block[mb_nr] = 0;
@@ -1026,7 +1027,7 @@ static void read_inter_macroblock(Macroblock *currMB)
   currMB->NoMbPartLessThan8x8Flag = TRUE;
   currMB->luma_transform_size_8x8_flag = FALSE;
 
-  if(currMB->p_Vid->active_pps->constrained_intra_pred_flag)
+  if(currMB->p_Slice->active_pps->constrained_intra_pred_flag)
   {
     int mb_nr = currMB->mbAddrX;
     currSlice->intra_block[mb_nr] = 0;
@@ -1100,7 +1101,7 @@ static void read_P8x8_macroblock(Macroblock *currMB, DataPartition *dP, SyntaxEl
   init_macroblock (currMB);
   currSlice->read_motion_info_from_NAL (currMB);  
 
-  if(currMB->p_Vid->active_pps->constrained_intra_pred_flag)
+  if(currMB->p_Slice->active_pps->constrained_intra_pred_flag)
   {
     int mb_nr = currMB->mbAddrX;
     currSlice->intra_block[mb_nr] = 0;
@@ -1906,7 +1907,7 @@ static void read_one_macroblock_b_slice_cavlc(Macroblock *currMB)
 
     currMB->luma_transform_size_8x8_flag = FALSE;
 
-    if(p_Vid->active_pps->constrained_intra_pred_flag)
+    if(currSlice->active_pps->constrained_intra_pred_flag)
     {
       currSlice->intra_block[mb_nr] = 0;
     }
@@ -2132,7 +2133,7 @@ static void read_one_macroblock_b_slice_cabac(Macroblock *currMB)
     //transform size flag for INTRA_4x4 and INTRA_8x8 modes
     currMB->luma_transform_size_8x8_flag = FALSE;
 
-    if(p_Vid->active_pps->constrained_intra_pred_flag)
+    if(currSlice->active_pps->constrained_intra_pred_flag)
     {
       currSlice->intra_block[mb_nr] = 0;
     }
@@ -2167,7 +2168,7 @@ static void read_one_macroblock_b_slice_cabac(Macroblock *currMB)
 
 void setup_read_macroblock(Slice *currSlice)
 {
-  if (currSlice->p_Vid->active_pps->entropy_coding_mode_flag == (Boolean) CABAC)
+  if (currSlice->active_pps->entropy_coding_mode_flag == (Boolean) CABAC)
   {
     switch (currSlice->slice_type)
     {

@@ -54,7 +54,7 @@ static int intra16x16_dc_pred_mbaff(Macroblock *currMB, ColorPlane pl)
   }
   getAffNeighbour(currMB,    0,   -1, p_Vid->mb_size[IS_LUMA], &b);
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag)
+  if (!currSlice->active_pps->constrained_intra_pred_flag)
   {
     up_avail      = b.available;
     left_avail    = left[1].available;
@@ -124,7 +124,7 @@ static int intra16x16_vert_pred_mbaff(Macroblock *currMB, ColorPlane pl)
 
   getAffNeighbour(currMB,    0,   -1, p_Vid->mb_size[IS_LUMA], &b);
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag)
+  if (!currSlice->active_pps->constrained_intra_pred_flag)
   {
     up_avail = b.available;
   }
@@ -181,7 +181,7 @@ static int intra16x16_hor_pred_mbaff(Macroblock *currMB, ColorPlane pl)
     getAffNeighbour(currMB, -1,  i-1, p_Vid->mb_size[IS_LUMA], &left[i]);
   }
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag)
+  if (!currSlice->active_pps->constrained_intra_pred_flag)
   {
     left_avail    = left[1].available;
   }
@@ -240,7 +240,7 @@ static int intra16x16_plane_pred_mbaff(Macroblock *currMB, ColorPlane pl)
   }
   getAffNeighbour(currMB,    0,   -1, p_Vid->mb_size[IS_LUMA], &b);
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag)
+  if (!currSlice->active_pps->constrained_intra_pred_flag)
   {
     up_avail      = b.available;
     left_avail    = left[1].available;

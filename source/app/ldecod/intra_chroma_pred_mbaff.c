@@ -50,7 +50,7 @@ void intrapred_chroma_ver_mbaff(Macroblock *currMB)
 
   getAffNeighbour(currMB, 0, -1, p_Vid->mb_size[IS_CHROMA], &up);
 
-  if (!p_Vid->active_pps->constrained_intra_pred_flag)
+  if (!currSlice->active_pps->constrained_intra_pred_flag)
     up_avail      = up.available;
   else
     up_avail = up.available ? currSlice->intra_block[up.mb_addr] : 0;
@@ -138,7 +138,7 @@ void intra_pred_chroma_mbaff(Macroblock *currMB)
         getAffNeighbour(currMB, -1, i-1, p_Vid->mb_size[IS_CHROMA], &left[i]);
       getAffNeighbour(currMB, 0, -1, p_Vid->mb_size[IS_CHROMA], &up);
 
-      if (!p_Vid->active_pps->constrained_intra_pred_flag)
+      if (!currSlice->active_pps->constrained_intra_pred_flag)
       {
         up_avail      = up.available;
         left_avail[0] = left_avail[1] = left[1].available;
@@ -227,7 +227,7 @@ void intra_pred_chroma_mbaff(Macroblock *currMB)
       for (i=0; i < cr_MB_y + 1 ; ++i)
         getAffNeighbour(currMB, -1, i-1, p_Vid->mb_size[IS_CHROMA], &left[i]);
 
-      if (!p_Vid->active_pps->constrained_intra_pred_flag)
+      if (!currSlice->active_pps->constrained_intra_pred_flag)
       {
         left_avail[0] = left_avail[1] = left[1].available;
       }
@@ -273,7 +273,7 @@ void intra_pred_chroma_mbaff(Macroblock *currMB)
 
       getAffNeighbour(currMB, 0, -1, p_Vid->mb_size[IS_CHROMA], &up);
 
-      if (!p_Vid->active_pps->constrained_intra_pred_flag)
+      if (!currSlice->active_pps->constrained_intra_pred_flag)
         up_avail      = up.available;
       else
         up_avail = up.available ? currSlice->intra_block[up.mb_addr] : 0;
@@ -310,7 +310,7 @@ void intra_pred_chroma_mbaff(Macroblock *currMB)
         getAffNeighbour(currMB, -1, i-1, p_Vid->mb_size[IS_CHROMA], &left[i]);
       getAffNeighbour(currMB, 0, -1, p_Vid->mb_size[IS_CHROMA], &up);
 
-      if (!p_Vid->active_pps->constrained_intra_pred_flag)
+      if (!currSlice->active_pps->constrained_intra_pred_flag)
       {
         up_avail      = up.available;
         left_avail[0] = left_avail[1] = left[1].available;

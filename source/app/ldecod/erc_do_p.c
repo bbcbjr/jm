@@ -19,6 +19,7 @@
  */
 
 #include "global.h"
+#include "view_context.h"
 #include "mbuffer.h"
 #include "memalloc.h"
 #include "erc_do.h"
@@ -45,8 +46,8 @@ static void CopyImgData(imgpel **inputY, imgpel ***inputUV, imgpel **outputY, im
 
 static void copyPredMB (int currYBlockNum, imgpel *predMB, frame *recfr,
                         int picSizeX, int regionSize);
-static void add_node   ( VideoParameters *p_Vid, struct concealment_node *ptr );
-static void delete_node( VideoParameters *p_Vid, struct concealment_node *ptr );
+static void add_node   ( ViewContext *vctx, struct concealment_node *ptr );
+static void delete_node( ViewContext *vctx, struct concealment_node *ptr );
 
 static const int uv_div[2][4] = {{0, 1, 1, 0}, {0, 1, 0, 0}}; //[x/y][yuv_format]
 
@@ -1110,7 +1111,7 @@ static StorablePicture* get_last_ref_pic_from_dpb(DecodedPictureBuffer *p_Dpb)
 ************************************************************************
 */
 
-static void copy_to_conceal(StorablePicture *src, StorablePicture *dst, VideoParameters *p_Vid)
+static void copy_to_conceal(StorablePicture *src, StorablePicture *dst, VideoParameters *p_Vid, ViewContext *vctx)
 {
   int i=0;
   int mv[3];
@@ -1127,7 +1128,7 @@ static void copy_to_conceal(StorablePicture *src, StorablePicture *dst, VideoPar
 
   dst->PicSizeInMbs  = src->PicSizeInMbs;
 
-  dst->slice_type = src->slice_type = p_Vid->conceal_slice_type;
+  dst->slice_type = src->slice_type = vctx->conceal_slice_type;
 
   dst->idr_flag = FALSE; //since we do not want to clears the ref list
 
@@ -1148,7 +1149,7 @@ static void copy_to_conceal(StorablePicture *src, StorablePicture *dst, VideoPar
   dec_picture = src;
 
   // Conceals the missing frame by frame copy concealment
-  if (p_Vid->conceal_mode==1)
+  if (vctx->conceal_mode==1)
   {
     // We need these initializations for using deblocking filter for frame copy
     // concealment as well.
@@ -1159,7 +1160,7 @@ static void copy_to_conceal(StorablePicture *src, StorablePicture *dst, VideoPar
   }
 
   // Conceals the missing frame by motion vector copy concealment
-  if (p_Vid->conceal_mode==2)
+  if (vctx->conceal_mode==2)
   {
     if (dec_picture->chroma_format_idc != YUV400)
     {
@@ -1176,9 +1177,9 @@ static void copy_to_conceal(StorablePicture *src, StorablePicture *dst, VideoPar
     dst->PicSizeInMbs = src->PicSizeInMbs;
     mb_width = dst->PicWidthInMbs;
     mb_height = (dst->PicSizeInMbs)/(dst->PicWidthInMbs);
-    scale = (p_Vid->conceal_slice_type == B_SLICE) ? 2 : 1;
+    scale = (vctx->conceal_slice_type == B_SLICE) ? 2 : 1;
 
-    if(p_Vid->conceal_slice_type == B_SLICE)
+    if(vctx->conceal_slice_type == B_SLICE)
     {
       init_lists_for_non_reference_loss(
         p_Vid->p_Dpb_layer[0],
@@ -1266,8 +1267,8 @@ copy_prev_pic_to_concealed_pic(StorablePicture *picture, DecodedPictureBuffer *p
   assert(ref_pic != NULL);
 
   /* copy all the struc from this to current concealment pic */
-  p_Vid->conceal_slice_type = P_SLICE;
-  copy_to_conceal(ref_pic, picture, p_Vid);
+  VCTX_DPB(p_Dpb)->conceal_slice_type = P_SLICE;
+  copy_to_conceal(ref_pic, picture, p_Vid, VCTX_DPB(p_Dpb));
 }
 
 
@@ -1284,6 +1285,7 @@ copy_prev_pic_to_concealed_pic(StorablePicture *picture, DecodedPictureBuffer *p
 void conceal_lost_frames(DecodedPictureBuffer *p_Dpb, Slice *pSlice)
 {
   VideoParameters *p_Vid = p_Dpb->p_Vid;
+  ViewContext *vctx = VCTX(pSlice);
   int CurrFrameNum;
   int UnusedShortTermFrameNum;
   StorablePicture *picture = NULL;
@@ -1295,13 +1297,13 @@ void conceal_lost_frames(DecodedPictureBuffer *p_Dpb, Slice *pSlice)
 
   // printf("A gap in frame number is found, try to fill it.\n");
 
-  if(p_Vid->IDR_concealment_flag == 1)
+  if(vctx->IDR_concealment_flag == 1)
   {
     // Conceals an IDR frame loss. Uses the reference frame in the previous
     // GOP for concealment.
     UnusedShortTermFrameNum = 0;
-    p_Vid->last_ref_pic_poc = -p_Vid->poc_gap;
-    p_Vid->earlier_missing_poc = 0;
+    vctx->last_ref_pic_poc = -p_Vid->poc_gap;
+    vctx->earlier_missing_poc = 0;
   }
   else
     UnusedShortTermFrameNum = (p_Vid->pre_frame_num + 1) % p_Vid->max_frame_num;
@@ -1324,16 +1326,16 @@ void conceal_lost_frames(DecodedPictureBuffer *p_Dpb, Slice *pSlice)
 
     pSlice->frame_num = UnusedShortTermFrameNum;
 
-    picture->top_poc=p_Vid->last_ref_pic_poc + p_Vid->ref_poc_gap;
+    picture->top_poc=vctx->last_ref_pic_poc + p_Vid->ref_poc_gap;
     picture->bottom_poc=picture->top_poc;
     picture->frame_poc=picture->top_poc;
     picture->poc=picture->top_poc;
-    p_Vid->last_ref_pic_poc = picture->poc;
+    vctx->last_ref_pic_poc = picture->poc;
 
     copy_prev_pic_to_concealed_pic(picture, p_Dpb);
 
     //if (UnusedShortTermFrameNum == 0)
-    if(p_Vid->IDR_concealment_flag == 1)
+    if(vctx->IDR_concealment_flag == 1)
     {
       picture->slice_type = I_SLICE;
       picture->idr_flag = TRUE;
@@ -1342,7 +1344,7 @@ void conceal_lost_frames(DecodedPictureBuffer *p_Dpb, Slice *pSlice)
       picture->bottom_poc=picture->top_poc;
       picture->frame_poc=picture->top_poc;
       picture->poc=picture->top_poc;
-      p_Vid->last_ref_pic_poc = picture->poc;
+      vctx->last_ref_pic_poc = picture->poc;
     }
 
     store_picture_in_dpb(p_Vid->p_Dpb_layer[0], picture);
@@ -1419,7 +1421,7 @@ void init_lists_for_non_reference_loss(DecodedPictureBuffer *p_Dpb, int currSlic
     {
       if(p_Dpb->fs[i]->concealment_reference == 1)
       {
-        if(p_Dpb->fs[i]->frame_num > p_Vid->frame_to_conceal)
+        if(p_Dpb->fs[i]->frame_num > VCTX_DPB(p_Dpb)->frame_to_conceal)
           p_Dpb->fs_ref[i]->frame_num_wrap = p_Dpb->fs[i]->frame_num - max_frame_num;
         else
           p_Dpb->fs_ref[i]->frame_num_wrap = p_Dpb->fs[i]->frame_num;
@@ -1455,7 +1457,7 @@ void init_lists_for_non_reference_loss(DecodedPictureBuffer *p_Dpb, int currSlic
       {
         if(p_Dpb->fs[i]->concealment_reference == 1)
         {
-          if(p_Vid->earlier_missing_poc > p_Dpb->fs[i]->frame->poc)
+          if(VCTX_DPB(p_Dpb)->earlier_missing_poc > p_Dpb->fs[i]->frame->poc)
             p_Vid->ppSliceList[0]->listX[0][list0idx++] = p_Dpb->fs[i]->frame;
         }
       }
@@ -1468,7 +1470,7 @@ void init_lists_for_non_reference_loss(DecodedPictureBuffer *p_Dpb, int currSlic
       {
         if(p_Dpb->fs[i]->concealment_reference == 1)
         {
-          if(p_Vid->earlier_missing_poc < p_Dpb->fs[i]->frame->poc)
+          if(VCTX_DPB(p_Dpb)->earlier_missing_poc < p_Dpb->fs[i]->frame->poc)
             p_Vid->ppSliceList[0]->listX[0][list0idx++] = p_Dpb->fs[i]->frame;
         }
       }
@@ -1542,9 +1544,9 @@ StorablePicture *get_pic_from_dpb(DecodedPictureBuffer *p_Dpb, int missingpoc, u
   int used_size = p_Dpb->used_size - 1;
   int i, concealfrom = 0;
 
-  if(p_Vid->conceal_mode == 1)
+  if(VCTX_DPB(p_Dpb)->conceal_mode == 1)
     concealfrom = missingpoc - p_Vid->poc_gap;
-  else if (p_Vid->conceal_mode == 2)
+  else if (VCTX_DPB(p_Dpb)->conceal_mode == 2)
     concealfrom = missingpoc + p_Vid->poc_gap;
 
   for(i = used_size; i >= 0; i--)
@@ -1638,15 +1640,15 @@ void print_list( struct concealment_node *ptr )
 */
 
 
-static void add_node( VideoParameters *p_Vid, struct concealment_node *concealment_new )
+static void add_node( ViewContext *vctx, struct concealment_node *concealment_new )
 {
-  if( p_Vid->concealment_head == NULL )
+  if( vctx->concealment_head == NULL )
   {
-    p_Vid->concealment_end = p_Vid->concealment_head = concealment_new;
+    vctx->concealment_end = vctx->concealment_head = concealment_new;
     return;
   }
-  p_Vid->concealment_end->next = concealment_new;
-  p_Vid->concealment_end = concealment_new;
+  vctx->concealment_end->next = concealment_new;
+  vctx->concealment_end = concealment_new;
 }
 
 
@@ -1659,14 +1661,14 @@ static void add_node( VideoParameters *p_Vid, struct concealment_node *concealme
 */
 
 
-static void delete_node( VideoParameters *p_Vid, struct concealment_node *ptr )
+static void delete_node( ViewContext *vctx, struct concealment_node *ptr )
 {
   // We only need to delete the first node in the linked list
-  if( ptr == p_Vid->concealment_head ) 
+  if( ptr == vctx->concealment_head )
   {
-    p_Vid->concealment_head = p_Vid->concealment_head->next;
-    if( p_Vid->concealment_end == ptr )
-      p_Vid->concealment_end = p_Vid->concealment_end->next;
+    vctx->concealment_head = vctx->concealment_head->next;
+    if( vctx->concealment_end == ptr )
+      vctx->concealment_end = vctx->concealment_end->next;
     free(ptr);
   }
 }
@@ -1679,27 +1681,27 @@ static void delete_node( VideoParameters *p_Vid, struct concealment_node *ptr )
 ************************************************************************
 */
 
-void delete_list( VideoParameters *p_Vid, struct concealment_node *ptr )
+void delete_list( ViewContext *vctx, struct concealment_node *ptr )
 {
   struct concealment_node *temp;
 
-  if( p_Vid->concealment_head == NULL ) return;
+  if( vctx->concealment_head == NULL ) return;
 
-  if( ptr == p_Vid->concealment_head ) 
+  if( ptr == vctx->concealment_head )
   {
-    p_Vid->concealment_head = NULL;
-    p_Vid->concealment_end = NULL;
+    vctx->concealment_head = NULL;
+    vctx->concealment_end = NULL;
   }
   else
   {
-    temp = p_Vid->concealment_head;
+    temp = vctx->concealment_head;
 
     while( temp->next != ptr )
       temp = temp->next;
-    p_Vid->concealment_end = temp;
+    vctx->concealment_end = temp;
   }
 
-  while( ptr != NULL ) 
+  while( ptr != NULL )
   {
     temp = ptr->next;
     free( ptr );
@@ -1721,6 +1723,7 @@ void delete_list( VideoParameters *p_Vid, struct concealment_node *ptr )
 void conceal_non_ref_pics(DecodedPictureBuffer *p_Dpb, int diff)
 {
   VideoParameters *p_Vid = p_Dpb->p_Vid;
+  ViewContext *vctx = VCTX_DPB(p_Dpb);
   int missingpoc = 0;
   unsigned int i, pos = 0;
   StorablePicture *conceal_from_picture = NULL;
@@ -1744,9 +1747,9 @@ void conceal_non_ref_pics(DecodedPictureBuffer *p_Dpb, int diff)
       // Diagnostics
       // printf("\n missingpoc = %d\n",missingpoc);
 
-      if(missingpoc > p_Vid->earlier_missing_poc)
+      if(missingpoc > vctx->earlier_missing_poc)
       {
-        p_Vid->earlier_missing_poc  = missingpoc;
+        vctx->earlier_missing_poc  = missingpoc;
         conceal_to_picture->top_poc = missingpoc;
         conceal_to_picture->bottom_poc = missingpoc;
         conceal_to_picture->frame_poc = missingpoc;
@@ -1757,13 +1760,13 @@ void conceal_non_ref_pics(DecodedPictureBuffer *p_Dpb, int diff)
 
         p_Dpb->used_size = pos + 1;
 
-        p_Vid->frame_to_conceal = conceal_from_picture->frame_num + 1;
+        vctx->frame_to_conceal = conceal_from_picture->frame_num + 1;
 
         update_ref_list_for_concealment(p_Dpb);
-        p_Vid->conceal_slice_type = B_SLICE;
-        copy_to_conceal(conceal_from_picture, conceal_to_picture, p_Vid);
+        vctx->conceal_slice_type = B_SLICE;
+        copy_to_conceal(conceal_from_picture, conceal_to_picture, p_Vid, vctx);
         concealment_ptr = init_node( conceal_to_picture, missingpoc );
-        add_node(p_Vid, concealment_ptr);
+        add_node(vctx, concealment_ptr);
         // Diagnostics
         // print_node(concealment_ptr);
       }
@@ -1811,19 +1814,20 @@ void sliding_window_poc_management(DecodedPictureBuffer *p_Dpb, StorablePicture 
 void write_lost_non_ref_pic(DecodedPictureBuffer *p_Dpb, int poc, int p_out)
 {
   VideoParameters *p_Vid = p_Dpb->p_Vid;
+  ViewContext *vctx = VCTX_DPB(p_Dpb);
   FrameStore concealment_fs;
   if(poc > 0)
   {
     if((poc - p_Dpb->last_output_poc) > p_Vid->poc_gap)
     {
 
-      concealment_fs.frame = p_Vid->concealment_head->picture;
+      concealment_fs.frame = vctx->concealment_head->picture;
       concealment_fs.is_output = 0;
       concealment_fs.is_reference = 0;
       concealment_fs.is_used = 3;
 
       write_stored_frame(p_Vid, &concealment_fs, p_out);
-      delete_node(p_Vid, p_Vid->concealment_head);
+      delete_node(vctx, vctx->concealment_head);
     }
   }
 }
@@ -1840,6 +1844,7 @@ void write_lost_non_ref_pic(DecodedPictureBuffer *p_Dpb, int poc, int p_out)
 void write_lost_ref_after_idr(DecodedPictureBuffer *p_Dpb, int pos)
 {
   VideoParameters *p_Vid = p_Dpb->p_Vid;
+  ViewContext *vctx = VCTX_DPB(p_Dpb);
 
   int temp = 1;
 
@@ -1850,13 +1855,13 @@ void write_lost_ref_after_idr(DecodedPictureBuffer *p_Dpb, int pos)
     p_Vid->last_out_fs->is_used = 3;
   }
 
-  if(p_Vid->conceal_mode == 2)
+  if(vctx->conceal_mode == 2)
   {
     temp = 2;
-    p_Vid->conceal_mode = 1;
+    vctx->conceal_mode = 1;
   }
-  copy_to_conceal(p_Dpb->fs[pos]->frame, p_Vid->last_out_fs->frame, p_Vid);
+  copy_to_conceal(p_Dpb->fs[pos]->frame, p_Vid->last_out_fs->frame, p_Vid, vctx);
 
-  p_Vid->conceal_mode = temp;
+  vctx->conceal_mode = temp;
 }
 

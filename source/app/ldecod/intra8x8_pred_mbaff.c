@@ -268,7 +268,7 @@ static inline int intra8x8_dc_pred_mbaff(Macroblock *currMB,    //!< current mac
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -412,7 +412,7 @@ static inline int intra8x8_vert_pred_mbaff(Macroblock *currMB,    //!< current m
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -528,7 +528,7 @@ static inline int intra8x8_hor_pred_mbaff(Macroblock *currMB,    //!< current ma
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -641,7 +641,7 @@ static inline int intra8x8_diag_down_right_pred_mbaff(Macroblock *currMB,    //!
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -791,7 +791,7 @@ static inline int intra8x8_diag_down_left_pred_mbaff(Macroblock *currMB,    //!<
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -942,7 +942,7 @@ static inline int intra8x8_vert_right_pred_mbaff(Macroblock *currMB,    //!< cur
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -1100,7 +1100,7 @@ static inline int intra8x8_vert_left_pred_mbaff(Macroblock *currMB,    //!< curr
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -1257,7 +1257,7 @@ static inline int intra8x8_hor_up_pred_mbaff(Macroblock *currMB,    //!< current
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;
@@ -1414,7 +1414,7 @@ static inline int intra8x8_hor_down_pred_mbaff(Macroblock *currMB,    //!< curre
 
   pix_c.available = pix_c.available &&!(ioff == 8 && joff == 8);
 
-  if (p_Vid->active_pps->constrained_intra_pred_flag)
+  if (currSlice->active_pps->constrained_intra_pred_flag)
   {
     for (i=0, block_available_left=1; i<8;i++)
       block_available_left  &= pix_a[i].available ? currSlice->intra_block[pix_a[i].mb_addr]: 0;

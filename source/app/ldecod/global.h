@@ -687,6 +687,12 @@ typedef struct video_par
   CodingParameters *p_EncodePar[MAX_NUM_DPB_LAYERS];
   LayerParameters *p_LayerPar[MAX_NUM_DPB_LAYERS];
 
+  // Per-view decode contexts. Allocated alongside p_Dpb_layer / p_EncodePar
+  // in alloc_video_params(). Scaffolding for Stage 2 view-parallel decoding
+  // (see STAGE2_M2_DESIGN.md). Allocated but unused until per-field
+  // migrations land in subsequent M3 steps.
+  ViewContext *p_view_ctx[MAX_NUM_DPB_LAYERS];
+
 #if (MVC_EXTENSION_ENABLE)
   subset_seq_parameter_set_rbsp_t *active_subset_sps;
   //int svc_extension_flag;
@@ -734,26 +740,32 @@ typedef struct video_par
   int ChromaArrayType;
 
   // picture error concealment
-  // concealment_head points to first node in list, concealment_end points to
-  // last node in list. Initialize both to NULL, meaning no nodes in list yet
-  struct concealment_node *concealment_head;
-  struct concealment_node *concealment_end;
+  // concealment_head / concealment_end moved to ViewContext (M3-G4) so each
+  // view tracks its own missing-frame list independently.
 
-  unsigned int pre_frame_num;           //!< store the frame_num in the last decoded slice. For detecting gap in frame_num.
+  // pre_frame_num is a bitstream-wide continuity tracker, not per-view.
+  // The H.264 gap-detection check at init_picture relies on any reference
+  // frame in any view updating it; making it per-view causes the dep view
+  // to trip the gap-check whenever base has a reference where dep has a
+  // non-reference (a normal MVC encoding pattern). Reverted from M3-G5.
+  // For M4 parallel decoding this will need to become a writer-serialized
+  // shared field or move to the demux thread.
+  unsigned int pre_frame_num;
   int non_conforming_stream;
 
-  // ////////////////////////
-  // for POC mode 0:
+  // POC tracking state (modes 0 and 1) is similarly bitstream-wide:
+  // when any view's exit_picture sets last_has_mmco_5, the OLD shared
+  // semantics meant ALL views' subsequent decode_poc would see the
+  // reset. Per-view migration in M3-G5 broke this for views whose own
+  // picture didn't carry MMCO5. Reverted; revisit in M4 with explicit
+  // broadcast or per-view last_has_mmco_5 tracking.
   signed   int PrevPicOrderCntMsb;
   unsigned int PrevPicOrderCntLsb;
-
-  // for POC mode 1:
   signed int ExpectedPicOrderCnt, PicOrderCntCycleCnt, FrameNumInPicOrderCntCycle;
   unsigned int PreviousFrameNum, FrameNumOffset;
   int ExpectedDeltaPerPicOrderCntCycle;
   int ThisPOC;
   int PreviousFrameNumOffset;
-  // /////////////////////////
 
   unsigned int PicHeightInMbs;
   unsigned int PicSizeInMbs;
@@ -771,22 +783,23 @@ typedef struct video_par
   TIME_T end_time;
 
   // picture error concealment
-  int last_ref_pic_poc;
+  // last_ref_pic_poc / conceal_mode / earlier_missing_poc / frame_to_conceal /
+  // IDR_concealment_flag / conceal_slice_type moved to ViewContext (M3-G4).
+  // ref_poc_gap / poc_gap remain here: they are config values set from
+  // p_Inp once at startup and read both by ERC and by the PSNR sequence
+  // numbering helper (which has no per-view scope).
   int ref_poc_gap;
   int poc_gap;
-  int conceal_mode;
-  int earlier_missing_poc;
-  unsigned int frame_to_conceal;
-  int IDR_concealment_flag;
-  int conceal_slice_type;
 
   Boolean first_sps;
   // random access point decoding
+  // recovery_point / recovery_point_found / recovery_frame_cnt remain here
+  // (bitstream-wide; will be owned by the demux thread in M4).
+  // recovery_frame_num and recovery_poc are now per-view in ViewContext
+  // (M3-G3) because they are derived from this view's frame_num / framepoc.
   int recovery_point;
   int recovery_point_found;
   int recovery_frame_cnt;
-  int recovery_frame_num;
-  int recovery_poc;
 
   byte *buf;
   byte *ibuf;
@@ -804,10 +817,10 @@ typedef struct video_par
 
 
   // Redundant slices. Should be moved to another structure and allocated only if extended profile
-  unsigned int previous_frame_num; //!< frame number of previous slice
+  // previous_frame_num: also reverted from M3-G5 (stays bitstream-wide).
+  unsigned int previous_frame_num;
   //!< non-zero: i-th previous frame is correct
-  int Is_primary_correct;          //!< if primary frame is correct, 0: incorrect
-  int Is_redundant_correct;        //!< if redundant frame is correct, 0:incorrect
+  // Is_primary_correct / Is_redundant_correct moved to ViewContext (M3-G3)
 
   // Time 
   int64 tot_time;
@@ -854,6 +867,16 @@ typedef struct video_par
 
   struct annex_b_struct *annex_b;
 
+  /* Stage 2 M4-P1: producer/consumer queue between the NALU reader and
+   * the slice decoder. In M4-P1 the decode thread pumps and pops itself
+   * (single-threaded). M4-P2 introduces a separate demux thread. */
+  struct jm_nalu_queue *nalu_queue;
+
+  /* Stage 2 M4-P2: dedicated demux thread that pumps the bitstream
+   * into nalu_queue. demux_thread_running gates jm_demux_stop's join. */
+  jm_thread_t demux_thread;
+  int         demux_thread_running;
+
   struct frame_store *out_buffer;
 
   struct storable_picture *pending_output;
@@ -863,7 +886,7 @@ typedef struct video_par
   int BitStreamFile;
 
   // report
-  char cslice_type[9];  
+  // cslice_type moved to ViewContext (M3-G1).
   // FMO
   int *MbToSliceGroupMap;
   int *MapUnitToSliceGroupMap;
@@ -884,7 +907,7 @@ typedef struct video_par
   void (*EdgeLoopChromaHor)(imgpel** Img, byte *Strength, Macroblock *MbQ, int edge, int uv, struct storable_picture *p);
   void (*img2buf)          (imgpel** imgX, unsigned char* buf, int size_x, int size_y, int symbol_size_in_bytes, int crop_left, int crop_right, int crop_top, int crop_bottom, int iOutStride);
 
-  ImageData tempData3;
+  // tempData3 moved to ViewContext (M3-G2)
   DecodedPicList *pDecOuputPic;
   int iDeblockMode;  //0: deblock in picture, 1: deblock in slice;
   struct nalu_t *nalu;
@@ -900,8 +923,12 @@ typedef struct video_par
   FILE *fpDbg;
 #endif
   pic_parameter_set_rbsp_t *pNextPPS;
-  int last_dec_poc;
-  int last_dec_view_id;
+  // last_dec_poc moved to ViewContext (M3-G6). last_dec_layer_id stays
+  // shared because it caches the binding state of the shared mb_data /
+  // intra_block / ipredmode / siblock / PicPos / nz_coeff shortcut
+  // pointers on p_Vid (which migrate in G9). dpb_layer_id stays shared:
+  // it is a transient parameter set immediately before activate_sps and
+  // read by it (currSlice->layer_id passed via global).
   int last_dec_layer_id;
   int dpb_layer_id;
 

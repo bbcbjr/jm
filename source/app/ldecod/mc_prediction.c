@@ -1722,7 +1722,7 @@ static void perform_mc_bi(Macroblock *currMB, ColorPlane pl, StorablePicture *de
   if ((chroma_format_idc != YUV400) && (chroma_format_idc != YUV444) ) 
   {
     int ioff_cr, joff_cr,block_size_y_cr,block_size_x_cr,vec2_y_cr,vec1_y_cr;    
-    int chroma_format_idc = p_Vid->active_sps->chroma_format_idc;
+    int chroma_format_idc = currSlice->active_sps->chroma_format_idc;
     int maxold_x = dec_picture->size_x_cr_m1;
     int maxold_y = (currMB->mb_field) ? (dec_picture->size_y_cr >> 1) - 1 : dec_picture->size_y_cr_m1;
     int shiftpel_x = p_Vid->shiftpel_x;
