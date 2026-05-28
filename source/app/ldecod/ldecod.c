@@ -70,6 +70,8 @@
 #include "h264decoder.h"
 #include "dec_statistics.h"
 #include "jm_simd.h"
+#include "jm_threads.h"
+#include "jm_nalu_queue.h"
 
 #ifdef BUILD_LDECOD_LIBRARY
 #include "ldecod_api.h"
@@ -177,6 +179,12 @@ static void alloc_video_params( VideoParameters **p_Vid)
   //(*p_Vid)->currentSlice = NULL;
   (*p_Vid)->pNextSlice = NULL;
   (*p_Vid)->nalu = AllocNALU(MAX_CODED_FRAME_SIZE);
+  /* NALU producer/consumer queue. Capacity 8 is plenty
+   * for single-threaded pump-and-pop; demux thread will fill
+   * it ahead of the decode thread. */
+  (*p_Vid)->nalu_queue = jm_nalu_queue_create(8);
+  if ((*p_Vid)->nalu_queue == NULL)
+    no_mem_exit("alloc_video_params: p_Vid->nalu_queue");
   (*p_Vid)->pDecOuputPic = (DecodedPicList *)calloc(1, sizeof(DecodedPicList));
   (*p_Vid)->pNextPPS = AllocPPS();
   (*p_Vid)->first_sps = TRUE;
@@ -294,6 +302,13 @@ static void free_img( VideoParameters *p_Vid)
     {
       FreeNALU(p_Vid->nalu);
       p_Vid->nalu=NULL;
+    }
+    /* Stage 2 M4-P1: tear down the demux queue and free any NALUs still
+     * buffered (only happens on abnormal early exit). */
+    if(p_Vid->nalu_queue)
+    {
+      jm_nalu_queue_destroy(p_Vid->nalu_queue);
+      p_Vid->nalu_queue = NULL;
     }
     //free memory;
     FreeDecPicList(p_Vid->pDecOuputPic);
@@ -1261,6 +1276,11 @@ int OpenDecoder(InputParameters *p_Inp)
   if (pDecoder->p_Inp->silent == FALSE)
     jm_simd_print_info();
 
+  /* Spawn the demux thread now that the bitstream is
+   * open and ready. It runs until EOS (closes the queue) or
+   * jm_demux_stop() in CloseDecoder. */
+  jm_demux_start(pDecoder->p_Vid);
+
   return DEC_OPEN_NOERR;
 }
 
@@ -1299,6 +1319,10 @@ int FinitDecoder(DecodedPicList **ppDecPicList)
   DecoderParams *pDecoder = p_Dec;
   if(!pDecoder)
     return DEC_GEN_NOERR;
+  /* Ensure the demux thread has stopped before
+   * reset_annex_b touches p_Vid->annex_b below. No-op if demux already
+   * exited on EOS (the common case). */
+  jm_demux_stop(pDecoder->p_Vid);
   ClearDecPicList(pDecoder->p_Vid);
 #if (MVC_EXTENSION_ENABLE)
   flush_dpb(pDecoder->p_Vid->p_Dpb_layer[0]);
@@ -1326,7 +1350,12 @@ int CloseDecoder()
   DecoderParams *pDecoder = p_Dec;
   if(!pDecoder)
     return DEC_CLOSE_NOERR;
-  
+
+  /* Stop the demux thread BEFORE close_annex_b. The
+   * demux thread reads from p_Vid->annex_b; once joined, nothing else
+   * touches the bitstream and it's safe to close. */
+  jm_demux_stop(pDecoder->p_Vid);
+
   Report  (pDecoder->p_Vid);
   FmoFinit(pDecoder->p_Vid);
   free_layer_buffers(pDecoder->p_Vid, 0);
