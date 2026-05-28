@@ -41,6 +41,7 @@
 #include "frame.h"
 #include "distortion.h"
 #include "io_video.h"
+#include "jm_threads.h"     /* for jm_thread_t (cross-platform thread handle) */
 
 typedef struct bit_stream_dec Bitstream;
 
@@ -49,6 +50,9 @@ extern char errortext[ET_SIZE]; //!< buffer for error message for exit with erro
 
 struct pic_motion_params_old;
 struct pic_motion_params;
+struct view_context;
+typedef struct view_context ViewContext;
+struct jm_nalu_queue;
 
 /***********************************************************************
  * T y p e    d e f i n i t i o n s    f o r    J M

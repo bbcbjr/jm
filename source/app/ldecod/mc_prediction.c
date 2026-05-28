@@ -22,6 +22,7 @@
 #include "macroblock.h"
 #include "memalloc.h"
 #include "dec_statistics.h"
+#include "jm_simd.h"
 
 int allocate_pred_mem(Slice *currSlice)
 {
@@ -165,7 +166,7 @@ static void weighted_bi_prediction(imgpel *mb_pred,
  *    Integer positions
  ************************************************************************
  */ 
-static void get_block_00(imgpel *block, imgpel *cur_img, int span, int block_size_y)
+void get_block_00(imgpel *block, imgpel *cur_img, int span, int block_size_y)
 {
   // fastest to just move an entire block, since block is a temp block is a 256 byte block (16x16)
   // writes 2 lines of 16 imgpel 1 to 8 times depending in block_size_y
@@ -189,7 +190,7 @@ static void get_block_00(imgpel *block, imgpel *cur_img, int span, int block_siz
  *    Qpel (1,0) horizontal
  ************************************************************************
  */ 
-static void get_luma_10(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos , int max_imgpel_value)
+void get_luma_10(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos , int max_imgpel_value)
 {
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
   imgpel *orig_line, *cur_line;
@@ -224,7 +225,7 @@ static void get_luma_10(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Half horizontal
  ************************************************************************
  */ 
-static void get_luma_20(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos , int max_imgpel_value)
+void get_luma_20(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos , int max_imgpel_value)
 {
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
   imgpel *orig_line;
@@ -243,7 +244,6 @@ static void get_luma_20(imgpel **block, imgpel **cur_imgY, int block_size_y, int
     for (i = 0; i < block_size_x; i++)
     {        
       result  = (*(p0++) + *(p5++)) - 5 * (*(p1++) + *(p4++)) + 20 * (*(p2++) + *(p3++));
-
       *orig_line++ = (imgpel) iClip1(max_imgpel_value, ((result + 16)>>5));
     }
   }
@@ -255,7 +255,7 @@ static void get_luma_20(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Qpel (3,0) horizontal
  ************************************************************************
  */ 
-static void get_luma_30(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos , int max_imgpel_value)
+void get_luma_30(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos , int max_imgpel_value)
 {
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
   imgpel *orig_line, *cur_line;
@@ -290,7 +290,7 @@ static void get_luma_30(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Qpel vertical (0, 1)
  ************************************************************************
  */ 
-static void get_luma_01(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_01(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
   imgpel *orig_line, *cur_line;
@@ -311,7 +311,6 @@ static void get_luma_01(imgpel **block, imgpel **cur_imgY, int block_size_y, int
     for (i = 0; i < block_size_x; i++)
     {
       result  = (*(p0++) + *(p5++)) - 5 * (*(p1++) + *(p4++)) + 20 * (*(p2++) + *(p3++));
-
       *orig_line = (imgpel) iClip1(max_imgpel_value, ((result + 16)>>5));
       *orig_line = (imgpel) ((*orig_line + *(cur_line++) + 1 ) >> 1);
       orig_line++;
@@ -327,7 +326,7 @@ static void get_luma_01(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Half vertical
  ************************************************************************
  */ 
-static void get_luma_02(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_02(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
   imgpel *orig_line;
@@ -346,7 +345,6 @@ static void get_luma_02(imgpel **block, imgpel **cur_imgY, int block_size_y, int
     for (i = 0; i < block_size_x; i++)
     {
       result  = (*(p0++) + *(p5++)) - 5 * (*(p1++) + *(p4++)) + 20 * (*(p2++) + *(p3++));
-
       *orig_line++ = (imgpel) iClip1(max_imgpel_value, ((result + 16)>>5));
     }
     p0 = p1 - block_size_x;
@@ -360,7 +358,7 @@ static void get_luma_02(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Qpel vertical (0, 3)
  ************************************************************************
  */ 
-static void get_luma_03(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_03(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
   imgpel *orig_line, *cur_line;
@@ -397,7 +395,7 @@ static void get_luma_03(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Hpel horizontal, Qpel vertical (2, 1)
  ************************************************************************
  */ 
-static void get_luma_21(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int max_imgpel_value)
+void get_luma_21(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int max_imgpel_value)
 {
   int i, j;
   /* Vertical & horizontal interpolation */
@@ -454,7 +452,7 @@ static void get_luma_21(imgpel **block, imgpel **cur_imgY, int **tmp_res, int bl
  *    Hpel horizontal, Hpel vertical (2, 2)
  ************************************************************************
  */ 
-static void get_luma_22(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int max_imgpel_value)
+void get_luma_22(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int max_imgpel_value)
 {
   int i, j;
   /* Vertical & horizontal interpolation */
@@ -507,7 +505,7 @@ static void get_luma_22(imgpel **block, imgpel **cur_imgY, int **tmp_res, int bl
  *    Hpel horizontal, Qpel vertical (2, 3)
  ************************************************************************
  */ 
-static void get_luma_23(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int max_imgpel_value)
+void get_luma_23(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int max_imgpel_value)
 {
   int i, j;
   /* Vertical & horizontal interpolation */
@@ -564,7 +562,7 @@ static void get_luma_23(imgpel **block, imgpel **cur_imgY, int **tmp_res, int bl
  *    Qpel horizontal, Hpel vertical (1, 2)
  ************************************************************************
  */ 
-static void get_luma_12(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_12(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   int i, j;
   int *tmp_line;
@@ -619,7 +617,7 @@ static void get_luma_12(imgpel **block, imgpel **cur_imgY, int **tmp_res, int bl
  *    Qpel horizontal, Hpel vertical (3, 2)
  ************************************************************************
  */ 
-static void get_luma_32(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_32(imgpel **block, imgpel **cur_imgY, int **tmp_res, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   int i, j;
   int *tmp_line;
@@ -673,7 +671,7 @@ static void get_luma_32(imgpel **block, imgpel **cur_imgY, int **tmp_res, int bl
  *    Qpel horizontal, Qpel vertical (3, 3)
  ************************************************************************
  */ 
-static void get_luma_33(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_33(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   int i, j;
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
@@ -730,7 +728,7 @@ static void get_luma_33(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Qpel horizontal, Qpel vertical (1, 1)
  ************************************************************************
  */ 
-static void get_luma_11(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_11(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   int i, j;
   imgpel *p0, *p1, *p2, *p3, *p4, *p5;
@@ -785,7 +783,7 @@ static void get_luma_11(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Qpel horizontal, Qpel vertical (1, 3)
  ************************************************************************
  */ 
-static void get_luma_13(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_13(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   /* Diagonal interpolation */
   int i, j;
@@ -841,7 +839,7 @@ static void get_luma_13(imgpel **block, imgpel **cur_imgY, int block_size_y, int
  *    Qpel horizontal, Qpel vertical (3, 1)
  ************************************************************************
  */ 
-static void get_luma_31(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
+void get_luma_31(imgpel **block, imgpel **cur_imgY, int block_size_y, int block_size_x, int x_pos, int shift_x, int max_imgpel_value)
 {
   /* Diagonal interpolation */
   int i, j;
@@ -915,58 +913,58 @@ void get_block_luma(StorablePicture *curr_ref, int x_pos, int y_pos, int block_s
     y_pos = iClip3(-10, maxold_y+2, y_pos);
 
     if (dx == 0 && dy == 0)
-      get_block_00(&block[0][0], &cur_imgY[y_pos][x_pos], curr_ref->iLumaStride, block_size_y);
+      jm_simd.get_block_00(&block[0][0], &cur_imgY[y_pos][x_pos], curr_ref->iLumaStride, block_size_y);
     else
     { /* other positions */
       if (dy == 0) /* No vertical interpolation */
-      {         
+      {
         if (dx == 1)
-          get_luma_10(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, max_imgpel_value);
+          jm_simd.get_luma_10(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, max_imgpel_value);
         else if (dx == 2)
-          get_luma_20(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, max_imgpel_value);
+          jm_simd.get_luma_20(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, max_imgpel_value);
         else
-          get_luma_30(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, max_imgpel_value);
+          jm_simd.get_luma_30(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, max_imgpel_value);
       }
-      else if (dx == 0) /* No horizontal interpolation */        
-      {         
+      else if (dx == 0) /* No horizontal interpolation */
+      {
         if (dy == 1)
-          get_luma_01(block, &cur_imgY[y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+          jm_simd.get_luma_01(block, &cur_imgY[y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
         else if (dy == 2)
-          get_luma_02(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+          jm_simd.get_luma_02(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
         else
-          get_luma_03(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+          jm_simd.get_luma_03(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
       }
       else if (dx == 2)  /* Vertical & horizontal interpolation */
-      {  
+      {
         if (dy == 1)
-          get_luma_21(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, max_imgpel_value);
+          jm_simd.get_luma_21(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, max_imgpel_value);
         else if (dy == 2)
-          get_luma_22(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, max_imgpel_value);
+          jm_simd.get_luma_22(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, max_imgpel_value);
         else
-          get_luma_23(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, max_imgpel_value);
+          jm_simd.get_luma_23(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, max_imgpel_value);
       }
       else if (dy == 2)
       {
         if (dx == 1)
-          get_luma_12(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+          jm_simd.get_luma_12(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
         else
-          get_luma_32(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+          jm_simd.get_luma_32(block, &cur_imgY[ y_pos], tmp_res, block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
       }
       else
       {
         if (dx == 1)
         {
           if (dy == 1)
-            get_luma_11(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+            jm_simd.get_luma_11(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
           else
-            get_luma_13(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+            jm_simd.get_luma_13(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
         }
         else
         {
           if (dy == 1)
-            get_luma_31(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+            jm_simd.get_luma_31(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
           else
-            get_luma_33(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
+            jm_simd.get_luma_33(block, &cur_imgY[ y_pos], block_size_y, block_size_x, x_pos, shift_x, max_imgpel_value);
         }
       }
     }
@@ -980,7 +978,7 @@ void get_block_luma(StorablePicture *curr_ref, int x_pos, int y_pos, int block_s
  *    Chroma (0,X)
  ************************************************************************
  */ 
-static void get_chroma_0X(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w01, int total_scale)
+void get_chroma_0X(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w01, int total_scale)
 {
   imgpel *cur_row = cur_img;
   imgpel *nxt_row = cur_img + span;
@@ -1013,7 +1011,7 @@ static void get_chroma_0X(imgpel *block, imgpel *cur_img, int span, int block_si
  *    Chroma (X,0)
  ************************************************************************
  */ 
-static void get_chroma_X0(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w10, int total_scale)
+void get_chroma_X0(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w10, int total_scale)
 {
   imgpel *cur_row = cur_img;
  
@@ -1044,7 +1042,7 @@ static void get_chroma_X0(imgpel *block, imgpel *cur_img, int span, int block_si
  *    Chroma (X,X)
  ************************************************************************
  */ 
-static void get_chroma_XY(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w01, int w10, int w11, int total_scale)
+void get_chroma_XY(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w01, int w10, int w11, int total_scale)
 { 
   imgpel *cur_row = cur_img;
   imgpel *nxt_row = cur_img + span;
@@ -1098,12 +1096,12 @@ static void get_block_chroma(StorablePicture *curr_ref, int x_pos, int y_pos, in
     img1 = &curr_ref->imgUV[0][y_pos][x_pos];
     img2 = &curr_ref->imgUV[1][y_pos][x_pos];
 
-    if (dx == 0 && dy == 0) 
+    if (dx == 0 && dy == 0)
     {
-      get_block_00(block1, img1, span, vert_block_size);
-      get_block_00(block2, img2, span, vert_block_size);
+      jm_simd.get_block_00(block1, img1, span, vert_block_size);
+      jm_simd.get_block_00(block2, img2, span, vert_block_size);
     }
-    else 
+    else
     {
       short dxcur = (short) (subpel_x + 1 - dx);
       short dycur = (short) (subpel_y + 1 - dy);
@@ -1111,22 +1109,22 @@ static void get_block_chroma(StorablePicture *curr_ref, int x_pos, int y_pos, in
       if (dx == 0)
       {
         short w01 = dxcur * dy;
-        get_chroma_0X(block1, img1, span, vert_block_size, block_size_x, w00, w01, total_scale);
-        get_chroma_0X(block2, img2, span, vert_block_size, block_size_x, w00, w01, total_scale);
+        jm_simd.get_chroma_0X(block1, img1, span, vert_block_size, block_size_x, w00, w01, total_scale);
+        jm_simd.get_chroma_0X(block2, img2, span, vert_block_size, block_size_x, w00, w01, total_scale);
       }
       else if (dy == 0)
       {
         short w10 = dx * dycur;
-        get_chroma_X0(block1, img1, span, vert_block_size, block_size_x, w00, w10, total_scale);
-        get_chroma_X0(block2, img2, span, vert_block_size, block_size_x, w00, w10, total_scale);
+        jm_simd.get_chroma_X0(block1, img1, span, vert_block_size, block_size_x, w00, w10, total_scale);
+        jm_simd.get_chroma_X0(block2, img2, span, vert_block_size, block_size_x, w00, w10, total_scale);
       }
       else
       {
         short w01 = dxcur * dy;
         short w10 = dx * dycur;
         short w11 = dx * dy;
-        get_chroma_XY(block1, img1, span, vert_block_size, block_size_x, w00, w01, w10, w11, total_scale);
-        get_chroma_XY(block2, img2, span, vert_block_size, block_size_x, w00, w01, w10, w11, total_scale);
+        jm_simd.get_chroma_XY(block1, img1, span, vert_block_size, block_size_x, w00, w01, w10, w11, total_scale);
+        jm_simd.get_chroma_XY(block2, img2, span, vert_block_size, block_size_x, w00, w01, w10, w11, total_scale);
       }
     }
   }
@@ -1390,7 +1388,7 @@ static void perform_mc_single_wp(Macroblock *currMB, ColorPlane pl, StorablePict
 
   {
     int alpha_l0, wp_offset, wp_denom;
-    if (currMB->mb_field && ((p_Vid->active_pps->weighted_pred_flag&&(type==P_SLICE|| type == SP_SLICE))||(p_Vid->active_pps->weighted_bipred_idc==1 && (type==B_SLICE))))
+    if (currMB->mb_field && ((currSlice->active_pps->weighted_pred_flag&&(type==P_SLICE|| type == SP_SLICE))||(currSlice->active_pps->weighted_bipred_idc==1 && (type==B_SLICE))))
       ref_idx_wp >>=1;
     alpha_l0  = currSlice->wp_weight[pred_dir][ref_idx_wp][pl];
     wp_offset = currSlice->wp_offset[pred_dir][ref_idx_wp][pl];
@@ -1529,7 +1527,7 @@ static void perform_mc_bi_wp(Macroblock *currMB, ColorPlane pl, StorablePicture 
   VideoParameters *p_Vid = currMB->p_Vid;    
   Slice *currSlice = currMB->p_Slice;
 
-  int weighted_bipred_idc = p_Vid->active_pps->weighted_bipred_idc;
+  int weighted_bipred_idc = currSlice->active_pps->weighted_bipred_idc;
   int block_y_aff = currMB->block_y_aff;
   int i4 = currMB->block_x + i;
   int j4 = currMB->block_y + j;

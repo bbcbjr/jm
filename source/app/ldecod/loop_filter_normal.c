@@ -947,7 +947,7 @@ static void perform_db_dep_normal(Macroblock   *MbQ, StorablePicture *p)
   imgpel     **imgY = p->imgY;
   imgpel   ***imgUV = p->imgUV;
 
-  seq_parameter_set_rbsp_t *active_sps = p_Vid->active_sps;
+  seq_parameter_set_rbsp_t *active_sps = currSlice->active_sps;
 
   MbQ->DeblockCall = 1;
   get_mb_pos (p_Vid, MbQ->mbAddrX, p_Vid->mb_size[IS_LUMA], &mb_x, &mb_y);
@@ -1090,7 +1090,7 @@ static void perform_db_ind_normal(Macroblock *MbQ, StorablePicture *p)
   imgpel     **imgY = p->imgY;
   imgpel   ***imgUV = p->imgUV;
 
-  seq_parameter_set_rbsp_t *active_sps = p_Vid->active_sps;
+  seq_parameter_set_rbsp_t *active_sps = currSlice->active_sps;
 
   MbQ->DeblockCall = 1;
   //get_mb_pos (p_Vid, MbQ->mbAddrX, p_Vid->mb_size[IS_LUMA], &mb_x, &mb_y);
@@ -1527,7 +1527,7 @@ static void get_db_strength_normal(VideoParameters *p_Vid, StorablePicture *p, i
         if( filterTopMbEdgeFlag )
           get_strength_hor(MbQ, 0, mvlimit, p);
       }
-      else if ((currSlice->slice_type == B_SLICE) && (MbQ->mb_type == BSKIP_DIRECT) && (p_Vid->active_sps->direct_8x8_inference_flag) && (MbQ->cbp == 0))
+      else if ((currSlice->slice_type == B_SLICE) && (MbQ->mb_type == BSKIP_DIRECT) && (currSlice->active_sps->direct_8x8_inference_flag) && (MbQ->cbp == 0))
       {
         // Vertical 
         if( filterLeftMbEdgeFlag )

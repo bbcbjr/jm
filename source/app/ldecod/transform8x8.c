@@ -24,6 +24,7 @@
 #include "transform8x8.h"
 #include "transform.h"
 #include "quant.h"
+#include "jm_simd.h"
 
 static void recon8x8(int **m7, imgpel **mb_rec, imgpel **mpr, int max_imgpel_value, int ioff)
 {
@@ -93,7 +94,7 @@ void itrans8x8(Macroblock *currMB,   //!< current macroblock
   }
   else
   {
-    inverse8x8(&m7[joff], &m7[joff], ioff);
+    jm_simd.inverse8x8(&m7[joff], &m7[joff], ioff);
     recon8x8  (&m7[joff], &currSlice->mb_rec[pl][joff], &currSlice->mb_pred[pl][joff], currMB->p_Vid->max_pel_value_comp[pl], ioff);
   }
 }

@@ -69,6 +69,7 @@
 #include "output.h"
 #include "h264decoder.h"
 #include "dec_statistics.h"
+#include "jm_simd.h"
 
 #ifdef BUILD_LDECOD_LIBRARY
 #include "ldecod_api.h"
@@ -126,6 +127,7 @@ static void reset_dpb( VideoParameters *p_Vid, DecodedPictureBuffer *p_Dpb )
   p_Dpb->p_Vid = p_Vid;
   p_Dpb->init_done = 0;
 }
+
 /*!
  ***********************************************************************
  * \brief
@@ -1250,6 +1252,14 @@ int OpenDecoder(InputParameters *p_Inp)
   pDecoder->p_Vid->fpDbg = fopen("c:/fltdbg.txt", "a");
   fprintf(pDecoder->p_Vid->fpDbg, "\ndecoder is opened.\n");
 #endif
+
+  /* Initialize SIMD dispatch table. Probes CPU features once
+   * and populates jm_simd.<kernel> pointers. Currently fills all slots
+   * with scalar implementations (no SIMD kernels wired yet -- Stage 3b
+   * adds them). Safe to call multiple times. */
+  jm_simd_init();
+  if (pDecoder->p_Inp->silent == FALSE)
+    jm_simd_print_info();
 
   return DEC_OPEN_NOERR;
 }

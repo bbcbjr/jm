@@ -24,6 +24,7 @@
 #include "transform.h"
 #include "quant.h"
 #include "memalloc.h"
+#include "jm_simd.h"     /* Stage 3b: dispatch inverse4x4 through SIMD table */
 
 /*!
  ***********************************************************************
@@ -39,7 +40,7 @@ void itrans4x4(Macroblock *currMB,   //!< current macroblock
   Slice *currSlice = currMB->p_Slice;
   int    **mb_rres = currSlice->mb_rres[pl];
 
-  inverse4x4(currSlice->cof[pl],mb_rres,joff,ioff);
+  jm_simd.inverse4x4(currSlice->cof[pl],mb_rres,joff,ioff);
 
   sample_reconstruct (&currSlice->mb_rec[pl][joff], &currSlice->mb_pred[pl][joff], &mb_rres[joff], ioff, ioff, BLOCK_SIZE, BLOCK_SIZE, currMB->p_Vid->max_pel_value_comp[pl], DQ_BITS);
 }
@@ -466,7 +467,7 @@ void itrans_sp(Macroblock *currMB,   //!< current macroblock
     }
   }
 
-  inverse4x4(cof, mb_rres, joff, ioff);
+  jm_simd.inverse4x4(cof, mb_rres, joff, ioff);
 
   for (j=joff; j<joff +BLOCK_SIZE;++j)
   {
@@ -650,41 +651,41 @@ void iMBtrans4x4(Macroblock *currMB, ColorPlane pl, int smb)
     {
       if (currMB->cbp & 0x01)
       {
-        inverse4x4(cof, mb_rres, 0, 0);
-        inverse4x4(cof, mb_rres, 0, 4);
-        inverse4x4(cof, mb_rres, 4, 0);
-        inverse4x4(cof, mb_rres, 4, 4);
+        jm_simd.inverse4x4(cof, mb_rres, 0, 0);
+        jm_simd.inverse4x4(cof, mb_rres, 0, 4);
+        jm_simd.inverse4x4(cof, mb_rres, 4, 0);
+        jm_simd.inverse4x4(cof, mb_rres, 4, 4);
       }
       if (currMB->cbp & 0x02)
       {
-        inverse4x4(cof, mb_rres, 0, 8);
-        inverse4x4(cof, mb_rres, 0, 12);
-        inverse4x4(cof, mb_rres, 4, 8);
-        inverse4x4(cof, mb_rres, 4, 12);
+        jm_simd.inverse4x4(cof, mb_rres, 0, 8);
+        jm_simd.inverse4x4(cof, mb_rres, 0, 12);
+        jm_simd.inverse4x4(cof, mb_rres, 4, 8);
+        jm_simd.inverse4x4(cof, mb_rres, 4, 12);
       }
       if (currMB->cbp & 0x04)
       {
-        inverse4x4(cof, mb_rres, 8, 0);
-        inverse4x4(cof, mb_rres, 8, 4);
-        inverse4x4(cof, mb_rres, 12, 0);
-        inverse4x4(cof, mb_rres, 12, 4);
+        jm_simd.inverse4x4(cof, mb_rres, 8, 0);
+        jm_simd.inverse4x4(cof, mb_rres, 8, 4);
+        jm_simd.inverse4x4(cof, mb_rres, 12, 0);
+        jm_simd.inverse4x4(cof, mb_rres, 12, 4);
       }
       if (currMB->cbp & 0x08)
       {
-        inverse4x4(cof, mb_rres, 8, 8);
-        inverse4x4(cof, mb_rres, 8, 12);
-        inverse4x4(cof, mb_rres, 12, 8);
-        inverse4x4(cof, mb_rres, 12, 12);
+        jm_simd.inverse4x4(cof, mb_rres, 8, 8);
+        jm_simd.inverse4x4(cof, mb_rres, 8, 12);
+        jm_simd.inverse4x4(cof, mb_rres, 12, 8);
+        jm_simd.inverse4x4(cof, mb_rres, 12, 12);
       }
     }
     else
     {
       for (jj = 0; jj < MB_BLOCK_SIZE; jj += BLOCK_SIZE)
       {
-        inverse4x4(cof, mb_rres, jj, 0);
-        inverse4x4(cof, mb_rres, jj, 4);
-        inverse4x4(cof, mb_rres, jj, 8);
-        inverse4x4(cof, mb_rres, jj, 12);
+        jm_simd.inverse4x4(cof, mb_rres, jj, 0);
+        jm_simd.inverse4x4(cof, mb_rres, jj, 4);
+        jm_simd.inverse4x4(cof, mb_rres, jj, 8);
+        jm_simd.inverse4x4(cof, mb_rres, jj, 12);
       }
     }
     sample_reconstruct (currSlice->mb_rec[pl], currSlice->mb_pred[pl], mb_rres, 0, 0, MB_BLOCK_SIZE, MB_BLOCK_SIZE, currMB->p_Vid->max_pel_value_comp[pl], DQ_BITS);
