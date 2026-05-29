@@ -53,6 +53,7 @@ struct pic_motion_params;
 struct view_context;
 typedef struct view_context ViewContext;
 struct jm_nalu_queue;
+struct picture_buffer_pool;
 
 /***********************************************************************
  * T y p e    d e f i n i t i o n s    f o r    J M
@@ -876,6 +877,12 @@ typedef struct video_par
    * into nalu_queue. demux_thread_running gates jm_demux_stop's join. */
   jm_thread_t demux_thread;
   int         demux_thread_running;
+
+  /* Phase B (post Stage 3c): pool of heavy picture buffers
+   * (imgY/imgUV/mv_info/mb_field) recycled across frames. NULL means
+   * "pool disabled, always use direct alloc". Created in OpenDecoder,
+   * destroyed in FinitDecoder. Type opaque here to avoid the include. */
+  struct picture_buffer_pool *picture_buffer_pool;
 
   struct frame_store *out_buffer;
 

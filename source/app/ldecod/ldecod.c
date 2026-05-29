@@ -72,6 +72,7 @@
 #include "jm_simd.h"
 #include "jm_threads.h"
 #include "jm_nalu_queue.h"
+#include "jm_picture_pool.h"
 #include "view_context.h"
 
 #ifdef BUILD_LDECOD_LIBRARY
@@ -1342,6 +1343,14 @@ int OpenDecoder(InputParameters *p_Inp)
   if (pDecoder->p_Inp->silent == FALSE)
     jm_simd_print_info();
 
+  /* Phase B: picture buffer pool. Slots are allocated lazily on first
+   * acquire; the pool starts empty. Capacity 16 covers Blu-ray MVC:
+   * max DPB ~= 4 frames/view * 2 views + current decode + output queue.
+   * Each slot is ~4 MB so the steady-state ceiling is ~64 MB.
+   * Set capacity to 0 (or assign NULL) to force every alloc through
+   * the direct path -- useful for A/B comparison or triage. */
+  pDecoder->p_Vid->picture_buffer_pool = picture_buffer_pool_create(16);
+
   /* Stage 2 M4-P2: spawn the demux thread now that the bitstream is
    * open and ready. It runs until EOS (closes the queue) or
    * jm_demux_stop() in CloseDecoder. */
@@ -1473,6 +1482,19 @@ int CloseDecoder()
   for(i=0; i<MAX_NUM_DPB_LAYERS; i++)
    free_dpb(pDecoder->p_Vid->p_Dpb_layer[i]);
 
+  /* Phase B: destroy the picture buffer pool. Must run AFTER free_dpb
+   * which is what triggers free_storable_picture on every still-held
+   * picture; those calls return slots to the pool. After this point,
+   * any further free_storable_picture call on a pooled picture would
+   * dereference a freed pool -- but there shouldn't be any (the DPB
+   * was the only owner of pooled pictures). */
+  if (pDecoder->p_Vid->picture_buffer_pool)
+  {
+    if (pDecoder->p_Inp->silent == FALSE)
+      picture_buffer_pool_print_info(pDecoder->p_Vid->picture_buffer_pool);
+    picture_buffer_pool_destroy(pDecoder->p_Vid->picture_buffer_pool);
+    pDecoder->p_Vid->picture_buffer_pool = NULL;
+  }
 
   uninit_out_buffer(pDecoder->p_Vid);
 #if _FLTDBG_

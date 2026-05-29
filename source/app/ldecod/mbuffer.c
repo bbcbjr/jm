@@ -33,6 +33,7 @@
 #include "fast_memory.h"
 #include "input.h"
 #include "view_context.h"
+#include "jm_picture_pool.h"
 
 static void insert_picture_in_dpb    (VideoParameters *p_Vid, FrameStore* fs, StorablePicture* p);
 static int output_one_frame_from_dpb (DecodedPictureBuffer *p_Dpb);
@@ -549,18 +550,58 @@ StorablePicture* alloc_storable_picture(VideoParameters *p_Vid, PictureStructure
 
   s->PicSizeInMbs = (size_x*size_y)/256;
   s->imgUV = NULL;
+  s->_buffer_slot = NULL;
 
-  get_mem2Dpel_pad (&(s->imgY), size_y, size_x, p_Vid->iLumaPadY, p_Vid->iLumaPadX);
-  s->iLumaStride = size_x+2*p_Vid->iLumaPadX;
-  s->iLumaExpandedHeight = size_y+2*p_Vid->iLumaPadY;
-
-  if (active_sps->chroma_format_idc != YUV400)
+  /* Phase B picture buffer pool: try to acquire heavy buffers
+   * (imgY/imgUV/mv_info/mb_field) from a pre-allocated slot that gets
+   * recycled across frames. Returns NULL when the pool can't serve
+   * this request (FRAME-only, canonical-size-only, JV mode falls back,
+   * pool full), in which case we drop through to the direct alloc
+   * path below. The pool uses _nozero allocators internally for its
+   * slots' buffers -- the decoder fully overwrites them every frame,
+   * verified bit-identical by Phase A. */
   {
-    get_mem3Dpel_pad(&(s->imgUV), 2, size_y_cr, size_x_cr, p_Vid->iChromaPadY, p_Vid->iChromaPadX);
+    PictureBufferSlot *pool_slot =
+      picture_buffer_pool_try_acquire(p_Vid->picture_buffer_pool,
+                                      p_Vid, structure,
+                                      size_x, size_y, size_x_cr, size_y_cr);
+    if (pool_slot)
+    {
+      /* Borrow buffer pointers. free_storable_picture must NOT free
+       * them; it releases the slot back to the pool instead. */
+      s->imgY                  = pool_slot->imgY;
+      s->imgUV                 = pool_slot->imgUV;
+      s->mv_info               = pool_slot->mv_info;
+      s->motion.mb_field       = pool_slot->mb_field;
+      s->_buffer_slot          = (void *)pool_slot;
+      s->iLumaStride           = pool_slot->iLumaStride;
+      s->iLumaExpandedHeight   = pool_slot->iLumaExpandedHeight;
+      s->iChromaStride         = pool_slot->iChromaStride;
+      s->iChromaExpandedHeight = pool_slot->iChromaExpandedHeight;
+    }
   }
 
-  s->iChromaStride =size_x_cr + 2*p_Vid->iChromaPadX;
-  s->iChromaExpandedHeight = size_y_cr + 2*p_Vid->iChromaPadY;
+  if (!s->_buffer_slot)
+  {
+    /* Direct (unpooled) allocation path -- runs on fallback and on the
+     * JV / fields / size-mismatch cases. Same allocators as before. */
+    get_mem2Dpel_pad (&(s->imgY), size_y, size_x, p_Vid->iLumaPadY, p_Vid->iLumaPadX);
+    s->iLumaStride = size_x+2*p_Vid->iLumaPadX;
+    s->iLumaExpandedHeight = size_y+2*p_Vid->iLumaPadY;
+
+    if (active_sps->chroma_format_idc != YUV400)
+    {
+      get_mem3Dpel_pad(&(s->imgUV), 2, size_y_cr, size_x_cr, p_Vid->iChromaPadY, p_Vid->iChromaPadX);
+    }
+
+    s->iChromaStride =size_x_cr + 2*p_Vid->iChromaPadX;
+    s->iChromaExpandedHeight = size_y_cr + 2*p_Vid->iChromaPadY;
+
+    get_mem2Dmp     ( &s->mv_info, (size_y >> BLOCK_SHIFT), (size_x >> BLOCK_SHIFT));
+    alloc_pic_motion( &s->motion , (size_y >> BLOCK_SHIFT), (size_x >> BLOCK_SHIFT));
+  }
+
+  /* Padding metadata is the same regardless of how buffers were obtained. */
   s->iLumaPadY   = p_Vid->iLumaPadY;
   s->iLumaPadX   = p_Vid->iLumaPadX;
   s->iChromaPadY = p_Vid->iChromaPadY;
@@ -568,9 +609,9 @@ StorablePicture* alloc_storable_picture(VideoParameters *p_Vid, PictureStructure
 
   s->separate_colour_plane_flag = p_Vid->separate_colour_plane_flag;
 
-  get_mem2Dmp     ( &s->mv_info, (size_y >> BLOCK_SHIFT), (size_x >> BLOCK_SHIFT));
-  alloc_pic_motion( &s->motion , (size_y >> BLOCK_SHIFT), (size_x >> BLOCK_SHIFT));
-
+  /* JV (separate_colour_plane) is never pooled; pool_try_acquire
+   * returns NULL when separate_colour_plane_flag is set, so the JV
+   * arrays are always direct-alloc'd here regardless of pool state. */
   if( (p_Vid->separate_colour_plane_flag != 0) )
   {
     for( nplane=0; nplane<MAX_PLANE; nplane++ )
@@ -670,6 +711,13 @@ void free_frame_store(FrameStore* f)
 
 void free_pic_motion(PicMotionParamsOld *motion)
 {
+  /* The early-return workaround used during pool triage is gone now
+   * that unmark_for_reference (mbuffer.c:828) and free_storable_picture
+   * both guard their calls by p->_buffer_slot: pooled pictures never
+   * reach here with motion->mb_field still pointing at slot-owned
+   * memory. So this function runs only for direct-alloc pictures (and
+   * for pooled pictures whose _buffer_slot branch already NULLed
+   * motion->mb_field, in which case the if-guard makes it a no-op). */
   if (motion->mb_field)
   {
     free(motion->mb_field);
@@ -693,12 +741,34 @@ void free_storable_picture(StorablePicture* p)
   int nplane;
   if (p)
   {
+    /* Phase B picture buffer pool: if these buffers came from the
+     * pool, return the slot rather than freeing the underlying
+     * allocations. The slot keeps the buffers live for the next
+     * acquirer. Clear the borrowed pointers on p so the rest of this
+     * function (which still runs to handle JV / listX / the struct
+     * itself) doesn't double-free anything. */
+    if (p->_buffer_slot)
+    {
+      picture_buffer_pool_release((PictureBufferSlot *)p->_buffer_slot);
+      p->_buffer_slot     = NULL;
+      p->imgY             = NULL;
+      p->imgUV            = NULL;
+      p->mv_info          = NULL;
+      p->motion.mb_field  = NULL;
+
+      //return;
+    }
+
     if (p->mv_info)
     {
       free_mem2Dmp(p->mv_info);
       p->mv_info = NULL;
     }
-    free_pic_motion(&p->motion);
+
+    if (p->motion.mb_field)
+    {
+      free_pic_motion(&p->motion);
+    }
 
     if( (p->separate_colour_plane_flag != 0) )
     {
@@ -783,17 +853,29 @@ void unmark_for_reference(FrameStore* fs)
 
   fs->is_reference = 0;
 
-  if(fs->frame)
+  /* Phase B picture pool: for pooled pictures, mb_field is owned by the
+   * slot, not the picture. The slot keeps it for the next acquirer to
+   * reuse. Skipping free_pic_motion here is safe: the picture's
+   * motion.mb_field still points at the slot's buffer (valid as long
+   * as the slot is in_use), and free_storable_picture will NULL the
+   * borrowed pointer when the picture is actually destroyed.
+   *
+   * Without this guard, the slot's mb_field gets freed here while the
+   * slot still considers itself the owner; the next picture to acquire
+   * the slot inherits a dangling pointer. Manifests as a heap-use-
+   * after-free crash a few frames later (typically in get_block_00
+   * when the next reference picture reads stale motion data). */
+  if(fs->frame && !fs->frame->_buffer_slot)
   {
     free_pic_motion(&fs->frame->motion);
   }
 
-  if (fs->top_field)
+  if (fs->top_field && !fs->top_field->_buffer_slot)
   {
     free_pic_motion(&fs->top_field->motion);
   }
 
-  if (fs->bottom_field)
+  if (fs->bottom_field && !fs->bottom_field->_buffer_slot)
   {
     free_pic_motion(&fs->bottom_field->motion);
   }

@@ -131,6 +131,17 @@ typedef struct storable_picture
   char listXsize[MAX_NUM_SLICES][2];
   struct storable_picture **listX[MAX_NUM_SLICES][2];
   int         layer_id;
+
+  /* Stage post-3c picture pool: if non-NULL, the heavy buffers
+   * (imgY/imgUV/mv_info/motion.mb_field) are owned by a slot in
+   * p_Vid->picture_buffer_pool. free_storable_picture must release the
+   * slot back to the pool (without freeing the buffers) and clear the
+   * borrowed pointers on this struct to avoid double-free. NULL means
+   * "buffers were direct-alloc'd, use the original free path". Type is
+   * opaque (void*) here so mbuffer.h doesn't need to include
+   * jm_picture_pool.h. */
+  void       *_buffer_slot;
+  const char *magic;
 } StorablePicture;
 
 typedef StorablePicture *StorablePicturePtr;
