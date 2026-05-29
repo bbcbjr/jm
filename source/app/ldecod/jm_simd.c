@@ -18,7 +18,8 @@
 #include "jm_simd.h"
 #include "transform_sse.h"
 #include "transform_avx2.h"
-#include "mc_prediction.h"  /* for scalar MC kernel extern decls (Stage 3c-0) */
+#include "mc_prediction.h"  /* for scalar MC kernel extern decls */
+#include "blk_prediction.h" /* for sample_reconstruct extern */
 
 /* Inverse transform kernel declarations come from transform.h:
  *   scalar:  inverse4x4 / inverse8x8        (transform.c)
@@ -76,6 +77,22 @@ extern void get_chroma_X0_sse(imgpel *block, imgpel *cur_img, int span,
 extern void get_chroma_XY_sse(imgpel *block, imgpel *cur_img, int span,
                               int block_size_y, int block_size_x,
                               int w00, int w01, int w10, int w11, int total_scale);
+
+/* SIMD kernels (mc_kernels_sse.c). */
+extern void get_block_00_sse(imgpel *block, imgpel *cur_img, int span, int block_size_y);
+extern void recon8x8_sse(int **m7, imgpel **mb_rec, imgpel **mpr,
+                         int max_imgpel_value, int ioff);
+extern void sample_reconstruct_sse(imgpel **curImg, imgpel **mpr, int **mb_rres,
+                                   int mb_x, int opix_x, int width, int height,
+                                   int max_imgpel_value, int dq_bits);
+extern void weighted_mc_prediction_sse(imgpel **mb_pred, imgpel **block,
+                                       int block_size_y, int block_size_x, int ioff,
+                                       int wp_scale, int wp_offset,
+                                       int weight_denom, int color_clip);
+extern void weighted_bi_prediction_sse(imgpel *mb_pred, imgpel *block_l0, imgpel *block_l1,
+                                       int block_size_y, int block_size_x,
+                                       int wp_scale_l0, int wp_scale_l1,
+                                       int wp_offset, int weight_denom, int color_clip);
 #endif
 
 /* The single global dispatch table. Read-only after jm_simd_init(). */
@@ -191,6 +208,12 @@ void jm_simd_init(void)
   jm_simd.get_chroma_X0 = get_chroma_X0;
   jm_simd.get_chroma_XY = get_chroma_XY;
 
+  /* ===== Residual reconstruction and weighted prediction ===== */
+  jm_simd.recon8x8               = recon8x8;
+  jm_simd.sample_reconstruct     = sample_reconstruct;
+  jm_simd.weighted_mc_prediction = weighted_mc_prediction;
+  jm_simd.weighted_bi_prediction = weighted_bi_prediction;
+
   /* Stage 3c-1 / 3c-2: SSSE3 half-pel luma filters. Universally
    * available on x86-64 (SSSE3 introduced 2006). The MC SIMD kernels
    * only exist for 8-bit imgpel builds; high-bit-depth builds fall
@@ -221,6 +244,16 @@ void jm_simd_init(void)
     jm_simd.get_chroma_0X = get_chroma_0X_sse;  /* Y-axis chroma bilinear */
     jm_simd.get_chroma_X0 = get_chroma_X0_sse;  /* X-axis chroma bilinear */
     jm_simd.get_chroma_XY = get_chroma_XY_sse;  /* 2D chroma bilinear (4 corners) */
+
+    /* Residual reconstruction (recon8x8) and weighted prediction.
+     * get_block_00 is pure copy and benefits from SIMD; weighted_mc/bi only
+     * need SSE2 but we gate them on the same SSSE3 banner since SSSE3 is
+     * the universal x86-64 baseline anyway and we save a second branch. */
+    jm_simd.get_block_00           = get_block_00_sse;
+    jm_simd.recon8x8               = recon8x8_sse;
+    jm_simd.sample_reconstruct     = sample_reconstruct_sse;
+    jm_simd.weighted_mc_prediction = weighted_mc_prediction_sse;
+    jm_simd.weighted_bi_prediction = weighted_bi_prediction_sse;
     selected |= JM_CPU_SSSE3;
   }
 #endif

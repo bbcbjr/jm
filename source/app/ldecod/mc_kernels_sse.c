@@ -1515,4 +1515,412 @@ void get_chroma_XY_sse(imgpel *block, imgpel *cur_img, int span,
   }
 }
 
+/* ===================================================================== */
+/*   recon8x8: residual + prediction + clip for 8x8 block                */
+/* ===================================================================== */
+/*  Per-pixel: mb_rec[j][i] = clip(0, max,                                */
+/*                                 mpr[j][i] + ((m7[j][i] + 32) >> 6))    */
+/*  where the shift constant is DQ_BITS_8 (= 6) and the round constant is */
+/*  1 << (DQ_BITS_8 - 1) = 32. Fixed 8x8 block (8 rows of 8 pixels each). */
+/*                                                                        */
+/*  Per row: load 8 int32 residuals (2 SSE2 regs of 4 each), add 32,      */
+/*  arithmetic-shift right by 6, signed-saturate to int16 via             */
+/*  _mm_packs_epi32, add 8 int16 prediction lanes, clip to [0, max_imgpel */
+/*  _value] via max/min_epi16, unsigned-saturate to bytes via             */
+/*  _mm_packus_epi16, store 8 bytes.                                      */
+/* ===================================================================== */
+void recon8x8_sse(int **m7, imgpel **mb_rec, imgpel **mpr,
+                  int max_imgpel_value, int ioff)
+{
+  const __m128i round_v = _mm_set1_epi32(1 << (DQ_BITS_8 - 1));
+  const __m128i zero    = _mm_setzero_si128();
+  const __m128i vmax    = _mm_set1_epi16((short)max_imgpel_value);
+  int j;
+
+  assert(sizeof(imgpel) == 1);
+
+  for (j = 0; j < 8; j++)
+  {
+    const int    *m_tr  = m7[j]      + ioff;
+    const imgpel *m_prd = mpr[j]     + ioff;
+    imgpel       *m_rec = mb_rec[j]  + ioff;
+
+    /* Load 8 int32 residuals into two 4-lane vectors. */
+    __m128i r_lo = _mm_loadu_si128((const __m128i *)(m_tr + 0));
+    __m128i r_hi = _mm_loadu_si128((const __m128i *)(m_tr + 4));
+
+    /* Round + arithmetic shift right by DQ_BITS_8 (immediate). */
+    r_lo = _mm_srai_epi32(_mm_add_epi32(r_lo, round_v), DQ_BITS_8);
+    r_hi = _mm_srai_epi32(_mm_add_epi32(r_hi, round_v), DQ_BITS_8);
+
+    /* int32 -> int16 (signed sat). After the round+shift the values are
+     * already in the int16 range so the saturation is a no-op. */
+    __m128i res16 = _mm_packs_epi32(r_lo, r_hi);
+
+    /* Load 8 prediction bytes -> int16. */
+    __m128i pred_byte = _mm_loadl_epi64((const __m128i *)m_prd);
+    __m128i pred16    = _mm_unpacklo_epi8(pred_byte, zero);
+
+    /* mpr + residual, then clip to [0, max_imgpel_value]. */
+    __m128i sum16 = _mm_add_epi16(pred16, res16);
+    sum16 = _mm_max_epi16(sum16, zero);
+    sum16 = _mm_min_epi16(sum16, vmax);
+
+    /* int16 -> uint8 (unsigned sat) and store low 8 bytes. */
+    __m128i sum8 = _mm_packus_epi16(sum16, sum16);
+    _mm_storel_epi64((__m128i *)m_rec, sum8);
+  }
+}
+
+/* ===================================================================== */
+/*   Stage 4 -- sample_reconstruct: parameterized residual + pred + clip  */
+/* ===================================================================== */
+/*  Same per-pixel formula as recon8x8 but width / height / dq_bits are   */
+/*  runtime values. Called from block.c at:                                */
+/*    - 4x4 transform reconstruction (BLOCK_SIZE x BLOCK_SIZE = 4x4)       */
+/*    - 16x16 luma reconstruction (MB_BLOCK_SIZE x MB_BLOCK_SIZE)          */
+/*    - chroma reconstruction (8x8 for 4:2:0 16x16 MB)                     */
+/*                                                                        */
+/*  Per pixel: curImg[j][opix_x+i] = clip(0, max,                          */
+/*    ((mb_rres[j][mb_x+i] + (1 << (dq_bits-1))) >> dq_bits) +             */
+/*    mpr[j][mb_x+i])                                                      */
+/*                                                                        */
+/*  dq_bits is a runtime parameter so the shift uses _mm_sra_epi32 with a */
+/*  count vector rather than the immediate srai variant.                  */
+/* ===================================================================== */
+void sample_reconstruct_sse(imgpel **curImg, imgpel **mpr, int **mb_rres,
+                            int mb_x, int opix_x, int width, int height,
+                            int max_imgpel_value, int dq_bits)
+{
+  const __m128i round_v     = _mm_set1_epi32(1 << (dq_bits - 1));
+  const __m128i shift_count = _mm_cvtsi32_si128(dq_bits);
+  const __m128i zero        = _mm_setzero_si128();
+  const __m128i vmax        = _mm_set1_epi16((short)max_imgpel_value);
+  int j;
+
+  assert(sizeof(imgpel) == 1);
+
+  if (width == 16)
+  {
+    for (j = 0; j < height; j++)
+    {
+      const int    *m7    = &mb_rres[j][mb_x];
+      const imgpel *mpr_p = &mpr[j][mb_x];
+      imgpel       *dst   = &curImg[j][opix_x];
+
+      /* 16 int32 residuals as 4 chunks of 4. */
+      __m128i r0 = _mm_loadu_si128((const __m128i *)(m7 +  0));
+      __m128i r1 = _mm_loadu_si128((const __m128i *)(m7 +  4));
+      __m128i r2 = _mm_loadu_si128((const __m128i *)(m7 +  8));
+      __m128i r3 = _mm_loadu_si128((const __m128i *)(m7 + 12));
+      r0 = _mm_sra_epi32(_mm_add_epi32(r0, round_v), shift_count);
+      r1 = _mm_sra_epi32(_mm_add_epi32(r1, round_v), shift_count);
+      r2 = _mm_sra_epi32(_mm_add_epi32(r2, round_v), shift_count);
+      r3 = _mm_sra_epi32(_mm_add_epi32(r3, round_v), shift_count);
+
+      /* int32 -> int16 (signed sat). After >>dq_bits the values fit. */
+      __m128i res16_lo = _mm_packs_epi32(r0, r1);
+      __m128i res16_hi = _mm_packs_epi32(r2, r3);
+
+      /* 16 prediction bytes -> two int16 halves. */
+      __m128i pred_byte = _mm_loadu_si128((const __m128i *)mpr_p);
+      __m128i pred16_lo = _mm_unpacklo_epi8(pred_byte, zero);
+      __m128i pred16_hi = _mm_unpackhi_epi8(pred_byte, zero);
+
+      /* prediction + residual, clip, pack to bytes, store. */
+      __m128i sum_lo = _mm_add_epi16(pred16_lo, res16_lo);
+      __m128i sum_hi = _mm_add_epi16(pred16_hi, res16_hi);
+      sum_lo = _mm_min_epi16(_mm_max_epi16(sum_lo, zero), vmax);
+      sum_hi = _mm_min_epi16(_mm_max_epi16(sum_hi, zero), vmax);
+      __m128i sum8 = _mm_packus_epi16(sum_lo, sum_hi);
+      _mm_storeu_si128((__m128i *)dst, sum8);
+    }
+  }
+  else if (width == 8)
+  {
+    for (j = 0; j < height; j++)
+    {
+      const int    *m7    = &mb_rres[j][mb_x];
+      const imgpel *mpr_p = &mpr[j][mb_x];
+      imgpel       *dst   = &curImg[j][opix_x];
+
+      __m128i r0 = _mm_loadu_si128((const __m128i *)(m7 + 0));
+      __m128i r1 = _mm_loadu_si128((const __m128i *)(m7 + 4));
+      r0 = _mm_sra_epi32(_mm_add_epi32(r0, round_v), shift_count);
+      r1 = _mm_sra_epi32(_mm_add_epi32(r1, round_v), shift_count);
+      __m128i res16 = _mm_packs_epi32(r0, r1);
+
+      __m128i pred_byte = _mm_loadl_epi64((const __m128i *)mpr_p);
+      __m128i pred16    = _mm_unpacklo_epi8(pred_byte, zero);
+
+      __m128i sum16 = _mm_add_epi16(pred16, res16);
+      sum16 = _mm_min_epi16(_mm_max_epi16(sum16, zero), vmax);
+      __m128i sum8  = _mm_packus_epi16(sum16, sum16);
+      _mm_storel_epi64((__m128i *)dst, sum8);
+    }
+  }
+  else  /* width == 4 (BLOCK_SIZE) */
+  {
+    for (j = 0; j < height; j++)
+    {
+      const int    *m7    = &mb_rres[j][mb_x];
+      const imgpel *mpr_p = &mpr[j][mb_x];
+      imgpel       *dst   = &curImg[j][opix_x];
+
+      /* 4 int32 residuals into a single 4-lane vector. */
+      __m128i r0 = _mm_loadu_si128((const __m128i *)m7);
+      r0 = _mm_sra_epi32(_mm_add_epi32(r0, round_v), shift_count);
+      __m128i res16 = _mm_packs_epi32(r0, r0);          /* low 4 lanes valid */
+
+      /* 4 prediction bytes via cvtsi32_si128 + alignment-safe int read. */
+      int pred_int;
+      memcpy(&pred_int, mpr_p, 4);
+      __m128i pred_byte = _mm_cvtsi32_si128(pred_int);
+      __m128i pred16    = _mm_unpacklo_epi8(pred_byte, zero);
+
+      __m128i sum16 = _mm_add_epi16(pred16, res16);
+      sum16 = _mm_min_epi16(_mm_max_epi16(sum16, zero), vmax);
+      __m128i sum8  = _mm_packus_epi16(sum16, sum16);
+      int tmp = _mm_cvtsi128_si32(sum8);
+      memcpy(dst, &tmp, 4);
+    }
+  }
+}
+
+/* ===================================================================== */
+/*   Stage 4 -- get_block_00: integer-pel MC (full 16-byte row copy)      */
+/* ===================================================================== */
+/*  The scalar version is a memcpy(MB_BLOCK_SIZE) per row, unrolled by 2. */
+/*  The SIMD version replaces each 16-byte memcpy with a 16-byte aligned- */
+/*  -agnostic load/store. Output `block` is the 16-byte-strided MC temp;  */
+/*  the source has at least 16 bytes of padding on each side so unaligned */
+/*  loads are always safe.                                                */
+/* ===================================================================== */
+void get_block_00_sse(imgpel *block, imgpel *cur_img, int span, int block_size_y)
+{
+  int j;
+  assert(sizeof(imgpel) == 1);
+  for (j = 0; j < block_size_y; j += 2)
+  {
+    __m128i row0 = _mm_loadu_si128((const __m128i *)cur_img);
+    cur_img += span;
+    __m128i row1 = _mm_loadu_si128((const __m128i *)cur_img);
+    cur_img += span;
+    _mm_storeu_si128((__m128i *)block, row0);
+    block += MB_BLOCK_SIZE;
+    _mm_storeu_si128((__m128i *)block, row1);
+    block += MB_BLOCK_SIZE;
+  }
+}
+
+/* ===================================================================== */
+/*   Stage 4 -- weighted_mc_prediction: single-reference weighted pred    */
+/* ===================================================================== */
+/*  result    = ((wp_scale * pel + (1 << (denom-1))) >> denom) + offset   */
+/*  out[j][i] = clip(0, color_clip, result)                               */
+/*                                                                        */
+/*  block_size_x ranges over {2, 4, 8, 16}: luma uses 4/8/16, chroma      */
+/*  uses 2/4/8. wp_scale fits in int16 (H.264 spec [-128, 127]). The      */
+/*  product wp_scale * pel can be up to ~32k -- still int16. But the      */
+/*  subsequent +round and +offset push us into int32 territory, so we     */
+/*  sign-extend after the multiply.                                       */
+/* ===================================================================== */
+
+/* Process 8 lanes: pel16 -> ((wp*pel + round) >> denom) + offset, clipped
+ * to [0, vmax]. Returns int16 lanes (low 8 valid) ready for packus. */
+static __inline __m128i jm_wp_8lanes(__m128i pel16,
+                                     __m128i wp_scale_v, __m128i round_v,
+                                     __m128i shift_count, __m128i offset_v,
+                                     __m128i zero, __m128i vmax)
+{
+  __m128i prod  = _mm_mullo_epi16(pel16, wp_scale_v);
+  __m128i sign  = _mm_srai_epi16(prod, 15);             /* sign-extend lo/hi via unpack */
+  __m128i lo32  = _mm_unpacklo_epi16(prod, sign);       /* 4 int32 */
+  __m128i hi32  = _mm_unpackhi_epi16(prod, sign);       /* 4 int32 */
+  lo32 = _mm_sra_epi32(_mm_add_epi32(lo32, round_v), shift_count);
+  hi32 = _mm_sra_epi32(_mm_add_epi32(hi32, round_v), shift_count);
+  lo32 = _mm_add_epi32(lo32, offset_v);
+  hi32 = _mm_add_epi32(hi32, offset_v);
+  /* Pack int32 -> int16 (signed sat; values fit in int16 since color_clip
+   * is at most 255 for 8-bit) then clip explicit to [0, color_clip] in
+   * case color_clip < 255. */
+  __m128i res16 = _mm_packs_epi32(lo32, hi32);
+  res16 = _mm_max_epi16(res16, zero);
+  return _mm_min_epi16(res16, vmax);
+}
+
+void weighted_mc_prediction_sse(imgpel **mb_pred, imgpel **block,
+                                int block_size_y, int block_size_x, int ioff,
+                                int wp_scale, int wp_offset,
+                                int weight_denom, int color_clip)
+{
+  /* Scalar rshift_rnd has an explicit `a > 0` guard: when weight_denom is
+   * 0 it returns x unchanged (no rounding, no shift). H.264 spec allows
+   * luma/chroma_log2_weight_denom == 0 and at least one Blu-ray stream
+   * exercises it. We handle it in-band rather than delegating to scalar:
+   *   - round_int = (denom > 0) ? (1 << (denom - 1)) : 0  (avoid UB)
+   *   - _mm_sra_epi32(x, 0) is identity, so the shift step is a no-op
+   *     when shift_count is zero.
+   * Result: same code path bit-identical for denom == 0 and denom > 0. */
+  const int round_int = (weight_denom > 0) ? (1 << (weight_denom - 1)) : 0;
+  const __m128i wp_scale_v  = _mm_set1_epi16((short)wp_scale);
+  const __m128i round_v     = _mm_set1_epi32(round_int);
+  const __m128i shift_count = _mm_cvtsi32_si128(weight_denom);
+  const __m128i offset_v    = _mm_set1_epi32(wp_offset);
+  const __m128i zero        = _mm_setzero_si128();
+  const __m128i vmax        = _mm_set1_epi16((short)color_clip);
+  int j;
+
+  assert(sizeof(imgpel) == 1);
+
+  if (block_size_x == 16)
+  {
+    /* Two 8-lane halves per row, combine to 16 bytes via single packus. */
+    for (j = 0; j < block_size_y; j++)
+    {
+      __m128i bytes   = _mm_loadu_si128((const __m128i *)block[j]);
+      __m128i lo16   = _mm_unpacklo_epi8(bytes, zero);
+      __m128i hi16   = _mm_unpackhi_epi8(bytes, zero);
+      __m128i res_lo = jm_wp_8lanes(lo16, wp_scale_v, round_v, shift_count, offset_v, zero, vmax);
+      __m128i res_hi = jm_wp_8lanes(hi16, wp_scale_v, round_v, shift_count, offset_v, zero, vmax);
+      __m128i res8   = _mm_packus_epi16(res_lo, res_hi);
+      _mm_storeu_si128((__m128i *)(&mb_pred[j][ioff]), res8);
+    }
+  }
+  else
+  {
+    /* block_size_x in {2, 4, 8}: compute 8 lanes, store low N bytes.
+     * Over-reads on block[j] are safe (the MC temp buffer is 16-wide). */
+    for (j = 0; j < block_size_y; j++)
+    {
+      __m128i bytes = _mm_loadl_epi64((const __m128i *)block[j]);
+      __m128i pel16 = _mm_unpacklo_epi8(bytes, zero);
+      __m128i res16 = jm_wp_8lanes(pel16, wp_scale_v, round_v, shift_count, offset_v, zero, vmax);
+      __m128i res8  = _mm_packus_epi16(res16, res16);
+      imgpel *dst   = &mb_pred[j][ioff];
+      if (block_size_x == 8)
+      {
+        _mm_storel_epi64((__m128i *)dst, res8);
+      }
+      else if (block_size_x == 4)
+      {
+        int tmp = _mm_cvtsi128_si32(res8);
+        memcpy(dst, &tmp, 4);
+      }
+      else  /* block_size_x == 2 */
+      {
+        int tmp = _mm_cvtsi128_si32(res8);
+        memcpy(dst, &tmp, 2);
+      }
+    }
+  }
+}
+
+/* ===================================================================== */
+/*   Stage 4 -- weighted_bi_prediction: bi-directional weighted pred      */
+/* ===================================================================== */
+/*  result = ((s0*b0 + s1*b1 + (1 << (denom-1))) >> denom) + offset       */
+/*  out[i] = clip(0, color_clip, result)                                  */
+/*                                                                        */
+/*  Trick: pmaddwd computes pairs of int16 products and sums adjacent     */
+/*  pairs into int32 lanes. Pack weights as [s0, s1, s0, s1, ...] and     */
+/*  interleave (b0[i], b1[i]) pairs, then one madd gives the per-pixel    */
+/*  weighted sum already in int32.                                        */
+/*                                                                        */
+/*  Caller advances mb_pred / block_l0 / block_l1 by block_size_x per     */
+/*  row of work and then by (MB_BLOCK_SIZE - block_size_x) of fixup --    */
+/*  the buffers are 16-strided regardless of block_size_x.                */
+/* ===================================================================== */
+
+/* Process 8 lanes: out = ((s0*b0 + s1*b1 + round) >> denom) + offset,
+ * clipped to [0, vmax]. Returns int16 lanes (low 8 valid). */
+static __inline __m128i jm_wbi_8lanes(const imgpel *b0, const imgpel *b1,
+                                      __m128i wp_pair, __m128i round_v,
+                                      __m128i shift_count, __m128i offset_v,
+                                      __m128i zero, __m128i vmax)
+{
+  __m128i bv0   = _mm_loadl_epi64((const __m128i *)b0);
+  __m128i bv1   = _mm_loadl_epi64((const __m128i *)b1);
+  __m128i b0_16 = _mm_unpacklo_epi8(bv0, zero);
+  __m128i b1_16 = _mm_unpacklo_epi8(bv1, zero);
+  /* Interleave: pairs_lo = [b0[0], b1[0], b0[1], b1[1], b0[2], b1[2], b0[3], b1[3]] */
+  __m128i pairs_lo = _mm_unpacklo_epi16(b0_16, b1_16);
+  __m128i pairs_hi = _mm_unpackhi_epi16(b0_16, b1_16);
+  /* madd: 4 int32 each = s0*b0[i] + s1*b1[i] for i in [0..3] and [4..7] */
+  __m128i sum_lo32 = _mm_madd_epi16(pairs_lo, wp_pair);
+  __m128i sum_hi32 = _mm_madd_epi16(pairs_hi, wp_pair);
+  /* +round, >>denom, +offset */
+  sum_lo32 = _mm_sra_epi32(_mm_add_epi32(sum_lo32, round_v), shift_count);
+  sum_hi32 = _mm_sra_epi32(_mm_add_epi32(sum_hi32, round_v), shift_count);
+  sum_lo32 = _mm_add_epi32(sum_lo32, offset_v);
+  sum_hi32 = _mm_add_epi32(sum_hi32, offset_v);
+  /* Pack to int16, clip to [0, vmax]. */
+  __m128i res16 = _mm_packs_epi32(sum_lo32, sum_hi32);
+  res16 = _mm_max_epi16(res16, zero);
+  return _mm_min_epi16(res16, vmax);
+}
+
+void weighted_bi_prediction_sse(imgpel *mb_pred, imgpel *block_l0, imgpel *block_l1,
+                                int block_size_y, int block_size_x,
+                                int wp_scale_l0, int wp_scale_l1,
+                                int wp_offset, int weight_denom, int color_clip)
+{
+  /* Weights packed as [s0, s1, s0, s1, ...] across the int16x8 register. */
+  const __m128i wp_pair = _mm_set1_epi32(
+      (int)(((unsigned int)((unsigned short)wp_scale_l1) << 16) |
+            (unsigned int)((unsigned short)wp_scale_l0)));
+  const __m128i round_v     = _mm_set1_epi32(1 << (weight_denom - 1));
+  const __m128i shift_count = _mm_cvtsi32_si128(weight_denom);
+  const __m128i offset_v    = _mm_set1_epi32(wp_offset);
+  const __m128i zero        = _mm_setzero_si128();
+  const __m128i vmax        = _mm_set1_epi16((short)color_clip);
+  const int row_inc = MB_BLOCK_SIZE - block_size_x;
+  int j;
+
+  assert(sizeof(imgpel) == 1);
+
+  if (block_size_x == 16)
+  {
+    for (j = 0; j < block_size_y; j++)
+    {
+      __m128i res_lo = jm_wbi_8lanes(block_l0,     block_l1,
+                                     wp_pair, round_v, shift_count, offset_v, zero, vmax);
+      __m128i res_hi = jm_wbi_8lanes(block_l0 + 8, block_l1 + 8,
+                                     wp_pair, round_v, shift_count, offset_v, zero, vmax);
+      __m128i res8   = _mm_packus_epi16(res_lo, res_hi);
+      _mm_storeu_si128((__m128i *)mb_pred, res8);
+      mb_pred  += 16 + row_inc;   /* block_size_x + row_inc = MB_BLOCK_SIZE */
+      block_l0 += 16 + row_inc;
+      block_l1 += 16 + row_inc;
+    }
+  }
+  else
+  {
+    /* block_size_x in {2, 4, 8} */
+    for (j = 0; j < block_size_y; j++)
+    {
+      __m128i res16 = jm_wbi_8lanes(block_l0, block_l1,
+                                    wp_pair, round_v, shift_count, offset_v, zero, vmax);
+      __m128i res8  = _mm_packus_epi16(res16, res16);
+      if (block_size_x == 8)
+      {
+        _mm_storel_epi64((__m128i *)mb_pred, res8);
+      }
+      else if (block_size_x == 4)
+      {
+        int tmp = _mm_cvtsi128_si32(res8);
+        memcpy(mb_pred, &tmp, 4);
+      }
+      else  /* block_size_x == 2 */
+      {
+        int tmp = _mm_cvtsi128_si32(res8);
+        memcpy(mb_pred, &tmp, 2);
+      }
+      mb_pred  += block_size_x + row_inc;
+      block_l0 += block_size_x + row_inc;
+      block_l1 += block_size_x + row_inc;
+    }
+  }
+}
+
 #endif  /* IMGTYPE == 0 */

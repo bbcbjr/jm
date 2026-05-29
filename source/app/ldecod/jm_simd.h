@@ -88,6 +88,32 @@ typedef void (*mc_luma_2y_fn) (imgpel **block, imgpel **cur_imgY, int **tmp_res,
 typedef void (*mc_chroma_0x_fn)(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w01_or_w10, int total_scale);
 typedef void (*mc_chroma_xy_fn)(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w01, int w10, int w11, int total_scale);
 
+/*!
+ ************************************************************************
+ *   dispatch signatures
+ *
+ *   recon8x8: residual + prediction add + clip for a single 8x8 block
+ *             (source/app/ldecod/transform8x8.c)
+ *   weighted_mc_prediction: per-pixel (wp_scale*pel + round) >> denom +
+ *             offset, then clip. Single reference (P slice or B-slice
+ *             single-direction). (source/app/ldecod/mc_prediction.c)
+ *   weighted_bi_prediction: bi-directional weighted prediction --
+ *             (s0*b0 + s1*b1 + round) >> denom + offset, clip. Used in
+ *             B slices when weighted_bipred_idc is set.
+ *             (source/app/ldecod/mc_prediction.c)
+ ************************************************************************
+ */
+typedef void (*recon8x8_fn)(int **m7, imgpel **mb_rec, imgpel **mpr, int max_imgpel_value, int ioff);
+typedef void (*weighted_mc_pred_fn)(imgpel **mb_pred, imgpel **block, int block_size_y, int block_size_x, int ioff, int wp_scale, int wp_offset, int weight_denom, int color_clip);
+typedef void (*weighted_bi_pred_fn)(imgpel *mb_pred, imgpel *block_l0, imgpel *block_l1, int block_size_y, int block_size_x, int wp_scale_l0, int wp_scale_l1, int wp_offset, int weight_denom, int color_clip);
+
+/* sample_reconstruct: same shape as recon8x8 but width/height/dq_bits are
+ * runtime parameters. Lives in source/lib/lcommon/blk_prediction.c.
+ * Called from block.c at the 4x4, 16x16, and chroma 8x8 sites. */
+typedef void (*sample_reconstruct_fn)(imgpel **curImg, imgpel **mpr, int **mb_rres,
+                                      int mb_x, int opix_x, int width, int height,
+                                      int max_imgpel_value, int dq_bits);
+
 typedef struct {
   /* Inverse transforms (source/lib/lcommon/transform.c) */
   void (*inverse4x4)(int **tblock, int **block, int pos_y, int pos_x);
@@ -116,6 +142,12 @@ typedef struct {
   mc_chroma_0x_fn get_chroma_0X;
   mc_chroma_0x_fn get_chroma_X0;
   mc_chroma_xy_fn get_chroma_XY;
+
+  /* Residual reconstruction and weighted prediction */
+  recon8x8_fn           recon8x8;
+  sample_reconstruct_fn sample_reconstruct;
+  weighted_mc_pred_fn   weighted_mc_prediction;
+  weighted_bi_pred_fn   weighted_bi_prediction;
 
   /* Bookkeeping: which features the selected implementations require */
   unsigned int features_selected;

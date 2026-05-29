@@ -26,7 +26,10 @@
 #include "quant.h"
 #include "jm_simd.h"
 
-static void recon8x8(int **m7, imgpel **mb_rec, imgpel **mpr, int max_imgpel_value, int ioff)
+/* Removed `static` so jm_simd dispatch table can point at this
+ * scalar implementation as the fallback. Declared in mc_prediction.h
+ * alongside the other scalar MC helpers exposed in Stage 3c-0. */
+void recon8x8(int **m7, imgpel **mb_rec, imgpel **mpr, int max_imgpel_value, int ioff)
 {
   int j;
   int    *m_tr  = NULL;
@@ -95,7 +98,7 @@ void itrans8x8(Macroblock *currMB,   //!< current macroblock
   else
   {
     jm_simd.inverse8x8(&m7[joff], &m7[joff], ioff);
-    recon8x8  (&m7[joff], &currSlice->mb_rec[pl][joff], &currSlice->mb_pred[pl][joff], currMB->p_Vid->max_pel_value_comp[pl], ioff);
+    jm_simd.recon8x8(&m7[joff], &currSlice->mb_rec[pl][joff], &currSlice->mb_pred[pl][joff], currMB->p_Vid->max_pel_value_comp[pl], ioff);
   }
 }
 

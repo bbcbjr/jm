@@ -67,10 +67,12 @@ static void mc_prediction(imgpel **mb_pred, imgpel **block, int block_size_y, in
  *    block single list weighted prediction
  ************************************************************************
  */
-static void weighted_mc_prediction(imgpel **mb_pred, 
-                                   imgpel **block, 
-                                   int block_size_y, 
-                                   int block_size_x, 
+/* Removed `static` so jm_simd dispatch can point at the scalar
+ * version as the fallback. Declared in mc_prediction.h. */
+void weighted_mc_prediction(imgpel **mb_pred,
+                                   imgpel **block,
+                                   int block_size_y,
+                                   int block_size_x,
                                    int ioff,
                                    int wp_scale,
                                    int wp_offset,
@@ -132,15 +134,16 @@ static void bi_prediction(imgpel **mb_pred,
  *    block weighted biprediction
  ************************************************************************
  */
-static void weighted_bi_prediction(imgpel *mb_pred, 
-                                   imgpel *block_l0, 
-                                   imgpel *block_l1, 
-                                   int block_size_y, 
-                                   int block_size_x, 
-                                   int wp_scale_l0, 
-                                   int wp_scale_l1, 
-                                   int wp_offset, 
-                                   int weight_denom, 
+/* Removed `static` (see weighted_mc_prediction above). */
+void weighted_bi_prediction(imgpel *mb_pred,
+                                   imgpel *block_l0,
+                                   imgpel *block_l1,
+                                   int block_size_y,
+                                   int block_size_x,
+                                   int wp_scale_l0,
+                                   int wp_scale_l1,
+                                   int wp_offset,
+                                   int weight_denom,
                                    int color_clip)
 {
   int i, j, result;
@@ -1393,7 +1396,7 @@ static void perform_mc_single_wp(Macroblock *currMB, ColorPlane pl, StorablePict
     alpha_l0  = currSlice->wp_weight[pred_dir][ref_idx_wp][pl];
     wp_offset = currSlice->wp_offset[pred_dir][ref_idx_wp][pl];
     wp_denom  = pl > 0 ? currSlice->chroma_log2_weight_denom : currSlice->luma_log2_weight_denom;
-    weighted_mc_prediction(&currSlice->mb_pred[pl][joff], tmp_block_l0, block_size_y, block_size_x, ioff, alpha_l0, wp_offset, wp_denom, max_imgpel_value);
+    jm_simd.weighted_mc_prediction(&currSlice->mb_pred[pl][joff], tmp_block_l0, block_size_y, block_size_x, ioff, alpha_l0, wp_offset, wp_denom, max_imgpel_value);
   }
 
   if ((chroma_format_idc != YUV400) && (chroma_format_idc != YUV444) ) 
@@ -1429,8 +1432,8 @@ static void perform_mc_single_wp(Macroblock *currMB, ColorPlane pl, StorablePict
       int *weight = currSlice->wp_weight[pred_dir][ref_idx_wp];
       int *offset = currSlice->wp_offset[pred_dir][ref_idx_wp];
       get_block_chroma(list,vec1_x,vec1_y_cr,p_Vid->subpel_x,p_Vid->subpel_y,maxold_x,maxold_y,block_size_x_cr,block_size_y_cr,p_Vid->shiftpel_x,p_Vid->shiftpel_y,&tmp_block_l0[0][0],&tmp_block_l1[0][0] ,total_scale,no_ref_value,p_Vid);
-      weighted_mc_prediction(&currSlice->mb_pred[1][joff_cr], tmp_block_l0, block_size_y_cr, block_size_x_cr, ioff_cr, weight[1], offset[1], chroma_log2_weight, p_Vid->max_pel_value_comp[1]);
-      weighted_mc_prediction(&currSlice->mb_pred[2][joff_cr], tmp_block_l1, block_size_y_cr, block_size_x_cr, ioff_cr, weight[2], offset[2], chroma_log2_weight, p_Vid->max_pel_value_comp[2]);
+      jm_simd.weighted_mc_prediction(&currSlice->mb_pred[1][joff_cr], tmp_block_l0, block_size_y_cr, block_size_x_cr, ioff_cr, weight[1], offset[1], chroma_log2_weight, p_Vid->max_pel_value_comp[1]);
+      jm_simd.weighted_mc_prediction(&currSlice->mb_pred[2][joff_cr], tmp_block_l1, block_size_y_cr, block_size_x_cr, ioff_cr, weight[2], offset[2], chroma_log2_weight, p_Vid->max_pel_value_comp[2]);
     }
   }
 }
@@ -1600,7 +1603,7 @@ static void perform_mc_bi_wp(Macroblock *currMB, ColorPlane pl, StorablePicture 
 
   wp_offset = ((offset0[pl] + offset1[pl] + 1) >>1);
   wp_denom  = pl > 0 ? currSlice->chroma_log2_weight_denom : currSlice->luma_log2_weight_denom;
-  weighted_bi_prediction(&currSlice->mb_pred[pl][joff][ioff], block0, block1, block_size_y, block_size_x, weight0[pl], weight1[pl], wp_offset, wp_denom + 1, max_imgpel_value);
+  jm_simd.weighted_bi_prediction(&currSlice->mb_pred[pl][joff][ioff], block0, block1, block_size_y, block_size_x, weight0[pl], weight1[pl], wp_offset, wp_denom + 1, max_imgpel_value);
 
   if ((chroma_format_idc != YUV400) && (chroma_format_idc != YUV444) ) 
   {
@@ -1650,9 +1653,9 @@ static void perform_mc_bi_wp(Macroblock *currMB, ColorPlane pl, StorablePicture 
     wp_offset = ((offset0[1] + offset1[1] + 1) >>1);
     get_block_chroma(list0,vec1_x,vec1_y_cr,subpel_x,subpel_y,maxold_x,maxold_y,block_size_x_cr,block_size_y_cr,shiftpel_x,shiftpel_y,block0,block2 ,total_scale,no_ref_value,p_Vid);
     get_block_chroma(list1,vec2_x,vec2_y_cr,subpel_x,subpel_y,maxold_x,maxold_y,block_size_x_cr,block_size_y_cr,shiftpel_x,shiftpel_y,block1,block3 ,total_scale,no_ref_value,p_Vid);
-    weighted_bi_prediction(&currSlice->mb_pred[1][joff_cr][ioff_cr],block0,block1,block_size_y_cr,block_size_x_cr,weight0[1],weight1[1],wp_offset,chroma_log2,p_Vid->max_pel_value_comp[1]);
+    jm_simd.weighted_bi_prediction(&currSlice->mb_pred[1][joff_cr][ioff_cr],block0,block1,block_size_y_cr,block_size_x_cr,weight0[1],weight1[1],wp_offset,chroma_log2,p_Vid->max_pel_value_comp[1]);
     wp_offset = ((offset0[2] + offset1[2] + 1) >>1);
-    weighted_bi_prediction(&currSlice->mb_pred[2][joff_cr][ioff_cr],block2,block3,block_size_y_cr,block_size_x_cr,weight0[2],weight1[2],wp_offset,chroma_log2,p_Vid->max_pel_value_comp[2]);
+    jm_simd.weighted_bi_prediction(&currSlice->mb_pred[2][joff_cr][ioff_cr],block2,block3,block_size_y_cr,block_size_x_cr,weight0[2],weight1[2],wp_offset,chroma_log2,p_Vid->max_pel_value_comp[2]);
   }    
 }
 

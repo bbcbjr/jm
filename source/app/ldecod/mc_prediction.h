@@ -54,5 +54,13 @@ extern void get_chroma_0X(imgpel *block, imgpel *cur_img, int span, int block_si
 extern void get_chroma_X0(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w10, int total_scale);
 extern void get_chroma_XY(imgpel *block, imgpel *cur_img, int span, int block_size_y, int block_size_x, int w00, int w01, int w10, int w11, int total_scale);
 
+/* Scalar fallbacks for the residual reconstruction and weighted
+ * prediction kernels. recon8x8 lives in transform8x8.c; the two weighted
+ * prediction helpers live in mc_prediction.c. All three were `static`
+ */
+extern void recon8x8(int **m7, imgpel **mb_rec, imgpel **mpr, int max_imgpel_value, int ioff);
+extern void weighted_mc_prediction(imgpel **mb_pred, imgpel **block, int block_size_y, int block_size_x, int ioff, int wp_scale, int wp_offset, int weight_denom, int color_clip);
+extern void weighted_bi_prediction(imgpel *mb_pred, imgpel *block_l0, imgpel *block_l1, int block_size_y, int block_size_x, int wp_scale_l0, int wp_scale_l1, int wp_offset, int weight_denom, int color_clip);
+
 #endif
 

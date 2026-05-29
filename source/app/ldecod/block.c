@@ -42,7 +42,7 @@ void itrans4x4(Macroblock *currMB,   //!< current macroblock
 
   jm_simd.inverse4x4(currSlice->cof[pl],mb_rres,joff,ioff);
 
-  sample_reconstruct (&currSlice->mb_rec[pl][joff], &currSlice->mb_pred[pl][joff], &mb_rres[joff], ioff, ioff, BLOCK_SIZE, BLOCK_SIZE, currMB->p_Vid->max_pel_value_comp[pl], DQ_BITS);
+  jm_simd.sample_reconstruct(&currSlice->mb_rec[pl][joff], &currSlice->mb_pred[pl][joff], &mb_rres[joff], ioff, ioff, BLOCK_SIZE, BLOCK_SIZE, currMB->p_Vid->max_pel_value_comp[pl], DQ_BITS);
 }
 
 /*!
@@ -688,7 +688,7 @@ void iMBtrans4x4(Macroblock *currMB, ColorPlane pl, int smb)
         jm_simd.inverse4x4(cof, mb_rres, jj, 12);
       }
     }
-    sample_reconstruct (currSlice->mb_rec[pl], currSlice->mb_pred[pl], mb_rres, 0, 0, MB_BLOCK_SIZE, MB_BLOCK_SIZE, currMB->p_Vid->max_pel_value_comp[pl], DQ_BITS);
+    jm_simd.sample_reconstruct(currSlice->mb_rec[pl], currSlice->mb_pred[pl], mb_rres, 0, 0, MB_BLOCK_SIZE, MB_BLOCK_SIZE, currMB->p_Vid->max_pel_value_comp[pl], DQ_BITS);
   }
 
   // construct picture from 4x4 blocks
@@ -782,7 +782,7 @@ void iTransform(Macroblock *currMB, ColorPlane pl, int smb)
             itrans4x4(currMB, uv, *x_pos++, *y_pos++);
             itrans4x4(currMB, uv, *x_pos  , *y_pos  );
           }
-          sample_reconstruct (mb_rec, currSlice->mb_pred[uv], currSlice->mb_rres[uv], 0, 0, 
+          jm_simd.sample_reconstruct(mb_rec, currSlice->mb_pred[uv], currSlice->mb_rres[uv], 0, 0,
             p_Vid->mb_size[1][0], p_Vid->mb_size[1][1], currMB->p_Vid->max_pel_value_comp[uv], DQ_BITS);
         }
         else
