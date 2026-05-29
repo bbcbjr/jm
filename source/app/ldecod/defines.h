@@ -41,10 +41,10 @@
 #define ZEROSNR                   0    //!< PSNR computation method
 #define ENABLE_OUTPUT_TONEMAPPING 0    //!< enable tone map the output if tone mapping SEI present (standard Blu-ray has no tone-mapping SEI)
 #define JCOST_CALC_SCALEUP        1    //!< 1: J = (D<<LAMBDA_ACCURACY_BITS)+Lambda*R; 0: J = D + ((Lambda*R+Rounding)>>LAMBDA_ACCURACY_BITS)
-#define DISABLE_ERC               0    //!< Disable any error concealment processes
-#define JM_PARALLEL_RESET_MBS     0    //!< Enables parallel reset of the macroblocks
-#define JM_PARALLEL_DEBLOCK       0    //!< Enables Parallel Deblocking (off by default; on requires the per-slice state migration in image.c/macroblock.c and a join-time reduction of per-picture counters)
-#define JM_PARALLEL_SLICES        0    //!< Enables parallel decode of slices in a picture (off by default; on requires the per-slice state migration in image.c/macroblock.c and a join-time reduction of per-picture counters)
+#define DISABLE_ERC               1    //!< Disable any error concealment processes (Blu-ray streams are well-formed; ERC adds per-MB overhead with no benefit)
+#define JM_PARALLEL_RESET_MBS     1    //!< Enables parallel reset of the macroblocks
+#define JM_PARALLEL_DEBLOCK       1    //!< Enables Parallel Deblocking (off by default; on requires the per-slice state migration in image.c/macroblock.c and a join-time reduction of per-picture counters)
+#define JM_PARALLEL_SLICES        1    //!< Enables parallel decode of slices in a picture (off by default; on requires the per-slice state migration in image.c/macroblock.c and a join-time reduction of per-picture counters)
 #define SIMULCAST_ENABLE          0    //!< to test the decoder
 
 #define MVC_EXTENSION_ENABLE      1    //!< enable support for the Multiview High Profile

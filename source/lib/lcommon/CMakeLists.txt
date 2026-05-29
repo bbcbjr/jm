@@ -19,6 +19,26 @@ set( SRC_FILES ${BASE_SRC_FILES} )
 # get all include files
 set( INC_FILES ${BASE_INC_FILES} )
 
+# Per-TU compile flags for SIMD ISA tiers.
+# transform_sse.c is SSE2-only -- SSE2 is the x86-64 baseline on every
+# compiler, so no extra flag is required.
+# transform_avx2.c uses _mm256_* / immintrin.h. MSVC tolerates these in
+# any TU but GCC and Clang error out without -mavx2. Setting the flag
+# per-TU lets the rest of lcommon stay buildable without AVX2 being
+# enabled globally (which would risk the compiler auto-vectorizing
+# unrelated code with AVX2 ops and failing on pre-Haswell CPUs).
+if( MSVC )
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/transform_avx2.c
+    PROPERTIES COMPILE_OPTIONS "/arch:AVX2"
+  )
+else()
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/transform_avx2.c
+    PROPERTIES COMPILE_OPTIONS "-mavx2"
+  )
+endif()
+
 # library
 add_library( ${LIB_NAME} STATIC ${SRC_FILES} ${INC_FILES} ${NATVIS_FILES} )
 

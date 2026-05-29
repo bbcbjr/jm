@@ -13,6 +13,17 @@ file( GLOB COMMON_INC_FILES "../../lib/lcommon/*.h" )
 
 set ( INC_FILES ${ENC_INC_FILES} ${COMMON_INC_FILES} )
 
+# Per-TU compile flag for the SSSE3 MC kernels. _mm_alignr_epi8 etc. are
+# SSSE3 (universally available since 2006). MSVC tolerates SSSE3
+# intrinsics in any TU; GCC/Clang require -mssse3 to compile them.
+# Setting it per-TU keeps the rest of ldecod unaffected.
+if( NOT MSVC )
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/mc_kernels_sse.c
+    PROPERTIES COMPILE_OPTIONS "-mssse3"
+  )
+endif()
+
 # get additional libs for gcc on Ubuntu systems
 if( CMAKE_SYSTEM_NAME STREQUAL "Linux" )
   if( CMAKE_CXX_COMPILER_ID STREQUAL "GNU" )
