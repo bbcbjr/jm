@@ -551,6 +551,7 @@ StorablePicture* alloc_storable_picture(VideoParameters *p_Vid, PictureStructure
   s->PicSizeInMbs = (size_x*size_y)/256;
   s->imgUV = NULL;
   s->_buffer_slot = NULL;
+  s->_ref_count = 1;
 
   /* Phase B picture buffer pool: try to acquire heavy buffers
    * (imgY/imgUV/mv_info/mb_field) from a pre-allocated slot that gets
@@ -736,11 +737,30 @@ void free_pic_motion(PicMotionParamsOld *motion)
  *
  ************************************************************************
  */
+/* Take an additional reference. Called by
+ * the async writer when a picture is enqueued so the DPB's release path
+ * doesn't actually free until the writer has finished reading the
+ * picture. Single-producer / single-consumer for now (decode thread
+ * addrefs, writer thread releases the extra ref); upgrade to atomic
+ * when view-parallel decoding lands. */
+void storable_picture_addref(StorablePicture *p)
+{
+  if (p == NULL) return;
+  p->_ref_count++;
+}
+
 void free_storable_picture(StorablePicture* p)
 {
   int nplane;
   if (p)
   {
+    /* Decrement and short-circuit if any holders
+     * remain. Only the last release does the real teardown. 
+     * Call sites are unaffected because ref_count starts at 1 -- the
+     * first free decrements 1 -> 0 and proceeds. */
+    if (--p->_ref_count > 0)
+      return;
+
     /* Phase B picture buffer pool: if these buffers came from the
      * pool, return the slot rather than freeing the underlying
      * allocations. The slot keeps the buffers live for the next
@@ -755,8 +775,6 @@ void free_storable_picture(StorablePicture* p)
       p->imgUV            = NULL;
       p->mv_info          = NULL;
       p->motion.mb_field  = NULL;
-
-      //return;
     }
 
     if (p->mv_info)

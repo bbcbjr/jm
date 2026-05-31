@@ -24,6 +24,7 @@
 #ifdef BUILD_LDECOD_LIBRARY
 #include "ldecod_api.h"
 #endif // BUILD_LDECOD_LIBRARY
+#include "jm_write_queue.h"
 
 static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_out);
 static void img2buf_byte   (imgpel** imgX, unsigned char* buf, int size_x, int size_y, int symbol_size_in_bytes, int crop_left, int crop_right, int crop_top, int crop_bottom, int iOutStride);
@@ -63,6 +64,54 @@ static int io_write(int p_out, const void *buf, size_t n)
   return write(p_out, buf, n);
 }
 #endif
+
+/* Writer-thread entry point. Lives here
+ * in output.c so it can call the static write_out_picture directly.
+ * After write_out_picture returns, drop the writer's refcount; the
+ * picture's struct + pool slot are only actually torn down when this
+ * release brings the count to 0 (i.e. the DPB has also released). */
+void jm_writer_drain_request(write_request_t *req)
+{
+  if (req == NULL || req->picture == NULL) return;
+  if (req->p_Vid != NULL)
+    write_out_picture(req->p_Vid, req->picture, req->p_out);
+  free_storable_picture(req->picture);
+  req->picture = NULL;
+}
+
+/* Async wrapper. The DPB output paths call this instead of
+ * write_out_picture directly. Takes an addref, pushes the picture
+ * pointer, returns immediately. The writer pops, runs the full
+ * write_out_picture (slot pickup + img2buf + io_write + bValid),
+ * then drops its reference.
+ *
+ * pDecOuputPic list safety: ClearDecPicList / FreeDecPicList only
+ * run on the decoder thread, and jm_writer_drain is called at every
+ * DecodeOneFrame boundary. So between drains the writer is the sole
+ * mutator of the list, and across drains the decoder is. Single
+ * mutator at any moment -- no race.
+ *
+ * On push failure (queue closed at shutdown), drops the just-taken
+ * addref and falls back to sync write_out_picture on the caller. */
+void write_out_picture_async(VideoParameters *p_Vid, StorablePicture *p, int p_out)
+{
+  write_request_t req;
+  if (p == NULL) return;
+
+  if (p_Vid->write_queue != NULL)
+  {
+    storable_picture_addref(p);
+    req.picture = p;
+    req.p_out   = p_out;
+    req.p_Vid   = p_Vid;
+    if (jm_write_queue_push(p_Vid->write_queue, &req) == 0)
+      return;                              /* writer owns the addref now */
+    /* Push failed -- queue was closed (shutdown drain). Drop the
+     * addref and fall through to sync write. */
+    free_storable_picture(p);
+  }
+  write_out_picture(p_Vid, p, p_out);
+}
 
 /*!
  ************************************************************************
@@ -329,7 +378,7 @@ void flush_pending_output(VideoParameters *p_Vid, int p_out)
 {
   if (p_Vid->pending_output_state != FRAME)
   {
-    write_out_picture(p_Vid, p_Vid->pending_output, p_out);
+    write_out_picture_async(p_Vid, p_Vid->pending_output, p_out);
   }
 
   if (p_Vid->pending_output->imgY)
@@ -367,7 +416,7 @@ void write_picture(VideoParameters *p_Vid, StorablePicture *p, int p_out, int re
   {
     
     flush_pending_output(p_Vid, p_out);
-    write_out_picture(p_Vid, p, p_out);
+    write_out_picture_async(p_Vid, p, p_out);
     return;
   }
   if (real_structure == p_Vid->pending_output_state)
@@ -482,7 +531,7 @@ void write_picture(VideoParameters *p_Vid, StorablePicture *p, int p_out, int re
  */
 void write_picture(VideoParameters *p_Vid, StorablePicture *p, int p_out, int real_structure)
 {
-  write_out_picture(p_Vid, p, p_out);
+  write_out_picture_async(p_Vid, p, p_out);
 }
 
 
@@ -491,7 +540,7 @@ void write_picture(VideoParameters *p_Vid, StorablePicture *p, int p_out, int re
 static void allocate_p_dec_pic(VideoParameters *p_Vid, DecodedPicList *pDecPic, StorablePicture *p, int iLumaSize, int iFrameSize, int iLumaSizeX, int iLumaSizeY, int iChromaSizeX, int iChromaSizeY)
 {
   int symbol_size_in_bytes = ((p_Vid->pic_unit_bitsize_on_disk+7) >> 3);
-  
+
   if(pDecPic->pY)
     mem_free(pDecPic->pY);
   pDecPic->iBufSize = iFrameSize;
@@ -512,6 +561,13 @@ static void allocate_p_dec_pic(VideoParameters *p_Vid, DecodedPicList *pDecPic, 
 ************************************************************************
 * \brief
 *    Writes out a storable picture
+*
+*    When invoked via write_out_picture_async this
+*    runs on the writer thread. pDecOuputPic list safety is provided
+*    by jm_writer_drain() being called at every DecodeOneFrame
+*    boundary -- between drains, the writer is the sole mutator of
+*    the list; across drains, the decoder is. Single mutator at any
+*    moment, so no lock is needed.
 *
 * \param p_Vid
 *      image decoding parameters for current picture
@@ -596,15 +652,14 @@ static void write_out_picture(VideoParameters *p_Vid, StorablePicture *p, int p_
 #else
   pDecPic->bValid = 1;
 #endif
-  
+
   pDecPic->iPOC = p->frame_poc;
-  
+
   if (NULL==pDecPic->pY)
   {
     no_mem_exit("write_out_picture: buf");
   }
 
-  
   if(rgb_output)
   {
     buf = malloc (p->size_x * p->size_y * symbol_size_in_bytes);

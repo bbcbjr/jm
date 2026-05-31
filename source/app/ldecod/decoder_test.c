@@ -35,7 +35,6 @@
 #define DECOUTPUT_VIEW0_FILENAME  "H264_Decoder_Output_View0.yuv"
 #define DECOUTPUT_VIEW1_FILENAME  "H264_Decoder_Output_View1.yuv"
 
-
 #ifdef BUILD_LDECOD_LIBRARY
 static void Configure(InputParameters *p_Inp, const ldecod_config_t *cfg)
 #else

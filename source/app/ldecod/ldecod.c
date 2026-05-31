@@ -73,6 +73,7 @@
 #include "jm_threads.h"
 #include "jm_nalu_queue.h"
 #include "jm_picture_pool.h"
+#include "jm_write_queue.h"
 #include "view_context.h"
 
 #ifdef BUILD_LDECOD_LIBRARY
@@ -397,7 +398,7 @@ void FreeDecPicList(DecodedPicList *pDecPicList)
   while(pDecPicList)
   {
     DecodedPicList *pPicNext = pDecPicList->pNext;
-    if(pDecPicList->pY)
+    if (pDecPicList->pY)
     {
       free(pDecPicList->pY);
       pDecPicList->pY = NULL;
@@ -1335,7 +1336,7 @@ int OpenDecoder(InputParameters *p_Inp)
   fprintf(pDecoder->p_Vid->fpDbg, "\ndecoder is opened.\n");
 #endif
 
-  /* Stage 3a: initialize SIMD dispatch table. Probes CPU features once
+  /* Initialize SIMD dispatch table. Probes CPU features once
    * and populates jm_simd.<kernel> pointers. Currently fills all slots
    * with scalar implementations (no SIMD kernels wired yet -- Stage 3b
    * adds them). Safe to call multiple times. */
@@ -1343,7 +1344,7 @@ int OpenDecoder(InputParameters *p_Inp)
   if (pDecoder->p_Inp->silent == FALSE)
     jm_simd_print_info();
 
-  /* Phase B: picture buffer pool. Slots are allocated lazily on first
+  /* Picture buffer pool. Slots are allocated lazily on first
    * acquire; the pool starts empty. Capacity 16 covers Blu-ray MVC:
    * max DPB ~= 4 frames/view * 2 views + current decode + output queue.
    * Each slot is ~4 MB so the steady-state ceiling is ~64 MB.
@@ -1351,7 +1352,13 @@ int OpenDecoder(InputParameters *p_Inp)
    * the direct path -- useful for A/B comparison or triage. */
   pDecoder->p_Vid->picture_buffer_pool = picture_buffer_pool_create(16);
 
-  /* Stage 2 M4-P2: spawn the demux thread now that the bitstream is
+  /* Async write queue + writer thread.
+   * Capacity 8 in the queue is generous; with the picture-pool
+   * backpressure the writer rarely falls more than a few frames behind. */
+  pDecoder->p_Vid->write_queue = jm_write_queue_create(8);
+  jm_writer_start(pDecoder->p_Vid);
+
+  /* Spawn the demux thread now that the bitstream is
    * open and ready. It runs until EOS (closes the queue) or
    * jm_demux_stop() in CloseDecoder. */
   jm_demux_start(pDecoder->p_Vid);
@@ -1385,6 +1392,14 @@ int DecodeOneFrame(DecodedPicList **ppDecPicList)
     iRet |= DEC_ERRMASK;
   }
 
+  /* Drain the async writer before exposing the
+   * output list to the host. The writer is allowed to run in parallel
+   * with the rest of decode_one_frame (DPB management, the next
+   * frame's prologue), but must be complete before the host can
+   * safely walk pDecOuputPic / read pY -- and before the next call's
+   * write_out_picture (writer-thread side) re-walks the list. */
+  jm_writer_drain(pDecoder->p_Vid);
+
   *ppDecPicList = pDecoder->p_Vid->pDecOuputPic;
   return iRet;
 }
@@ -1394,10 +1409,15 @@ int FinitDecoder(DecodedPicList **ppDecPicList)
   DecoderParams *pDecoder = p_Dec;
   if(!pDecoder)
     return DEC_GEN_NOERR;
-  /* Stage 2 M4-P2: ensure the demux thread has stopped before
+
+  /* Ensure the demux thread has stopped before
    * reset_annex_b touches p_Vid->annex_b below. No-op if demux already
    * exited on EOS (the common case). */
   jm_demux_stop(pDecoder->p_Vid);
+
+  /* Drain any in-flight writes before ClearDecPicList walks the list
+   * (it would otherwise see slots the writer is mid-update on). */
+  jm_writer_drain(pDecoder->p_Vid);
   ClearDecPicList(pDecoder->p_Vid);
 #if (MVC_EXTENSION_ENABLE)
   flush_dpb(pDecoder->p_Vid->p_Dpb_layer[0]);
@@ -1405,6 +1425,9 @@ int FinitDecoder(DecodedPicList **ppDecPicList)
 #else
   flush_dpb(pDecoder->p_Vid->p_Dpb_layer[0]);
 #endif
+  /* flush_dpb enqueued the tail pictures; drain again so the host
+   * sees fully-written output when it consumes pDecPicList below. */
+  jm_writer_drain(pDecoder->p_Vid);
 #if (PAIR_FIELDS_IN_OUTPUT)
   flush_pending_output(pDecoder->p_Vid, pDecoder->p_Vid->p_out);
 #endif
@@ -1447,6 +1470,21 @@ int CloseDecoder()
     break;   
   }
 
+  /* Stop the writer FIRST. This drains
+   * any in-flight write requests -- for each, writer runs
+   * write_out_picture (which calls free_storable_picture, dropping
+   * the writer's reference). The DPB still holds its references; the
+   * pictures aren't actually torn down here, just unblocked from the
+   * writer's hold. Then close the queue and destroy it. After this,
+   * free_dpb's pictures decrement from 1 -> 0 (no writer ref) and the
+   * pool slots are released as before. */
+  jm_writer_stop(pDecoder->p_Vid);
+  if (pDecoder->p_Vid->write_queue)
+  {
+    jm_write_queue_destroy(pDecoder->p_Vid->write_queue);
+    pDecoder->p_Vid->write_queue = NULL;
+  }
+
 #ifndef BUILD_LDECOD_LIBRARY
 #if (MVC_EXTENSION_ENABLE)
   for(i=0;i<MAX_VIEW_NUM;i++)
@@ -1482,7 +1520,7 @@ int CloseDecoder()
   for(i=0; i<MAX_NUM_DPB_LAYERS; i++)
    free_dpb(pDecoder->p_Vid->p_Dpb_layer[i]);
 
-  /* Phase B: destroy the picture buffer pool. Must run AFTER free_dpb
+  /* Destroy the picture buffer pool. Must run AFTER free_dpb
    * which is what triggers free_storable_picture on every still-held
    * picture; those calls return slots to the pool. After this point,
    * any further free_storable_picture call on a pooled picture would
@@ -1506,7 +1544,7 @@ int CloseDecoder()
   }
 #endif
 
-  free_img (pDecoder->p_Vid);
+  free_img(pDecoder->p_Vid);
   free (pDecoder->p_Inp);
   free(pDecoder);
 

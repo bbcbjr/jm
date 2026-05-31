@@ -53,6 +53,7 @@ struct pic_motion_params;
 struct view_context;
 typedef struct view_context ViewContext;
 struct jm_nalu_queue;
+struct jm_write_queue;
 struct picture_buffer_pool;
 
 /***********************************************************************
@@ -868,21 +869,29 @@ typedef struct video_par
 
   struct annex_b_struct *annex_b;
 
-  /* Stage 2 M4-P1: producer/consumer queue between the NALU reader and
-   * the slice decoder. In M4-P1 the decode thread pumps and pops itself
-   * (single-threaded). M4-P2 introduces a separate demux thread. */
+  /* Producer/consumer queue between the NALU reader and
+   * the slice decoder. The decode thread pumps and pops itself
+   * (single-threaded). Introduced a separate demux thread. */
   struct jm_nalu_queue *nalu_queue;
 
-  /* Stage 2 M4-P2: dedicated demux thread that pumps the bitstream
+  /* Dedicated demux thread that pumps the bitstream
    * into nalu_queue. demux_thread_running gates jm_demux_stop's join. */
   jm_thread_t demux_thread;
   int         demux_thread_running;
 
-  /* Phase B (post Stage 3c): pool of heavy picture buffers
+  /* Pool of heavy picture buffers
    * (imgY/imgUV/mv_info/mb_field) recycled across frames. NULL means
    * "pool disabled, always use direct alloc". Created in OpenDecoder,
    * destroyed in FinitDecoder. Type opaque here to avoid the include. */
   struct picture_buffer_pool *picture_buffer_pool;
+
+  /* Async write queue + writer thread
+   * that takes the cropping (img2buf) and io_write cost off the
+   * decode thread. Decoder addrefs the picture and pushes a pointer;
+   * writer pops, runs write_out_picture, then drops the ref. */
+  struct jm_write_queue *write_queue;
+  jm_thread_t            writer_thread;
+  int                    writer_thread_running;
 
   struct frame_store *out_buffer;
 

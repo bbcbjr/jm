@@ -142,6 +142,20 @@ typedef struct storable_picture
    * jm_picture_pool.h. */
   void       *_buffer_slot;
   const char *magic;
+
+  /* Refcount enabling zero-copy async
+   * output. Initialized to 1 in alloc_storable_picture (the original
+   * DPB-style single owner). Additional owners (async writer queue,
+   * future cross-view references when MVC view-parallel decoding
+   * lands) call storable_picture_addref to take a reference;
+   * free_storable_picture decrements and only does the actual
+   * teardown (struct free + pool slot release) when the count hits 0.
+   *
+   * Single-threaded today (only the decode thread addrefs, only the
+   * writer thread releases the extra ref). For view-parallel
+   * decoding, swap this for atomic_int (C11) / _Interlocked
+   * (MSVC) -- mechanical change behind the addref/release helpers. */
+  int         _ref_count;
 } StorablePicture;
 
 typedef StorablePicture *StorablePicturePtr;
@@ -219,6 +233,12 @@ extern FrameStore*       alloc_frame_store(void);
 extern void              free_frame_store (FrameStore* f);
 extern StorablePicture*  alloc_storable_picture(VideoParameters *p_Vid, PictureStructure type, int size_x, int size_y, int size_x_cr, int size_y_cr, int is_output);
 extern void              free_storable_picture (StorablePicture* p);
+
+/* Take an additional reference. The
+ * matching free_storable_picture call will not actually teardown the
+ * struct/slot until all references have been released. Async writer
+ * calls this on enqueue. */
+extern void              storable_picture_addref(StorablePicture* p);
 extern void              store_picture_in_dpb(DecodedPictureBuffer *p_Dpb, StorablePicture* p);
 extern StorablePicture*  get_short_term_pic (Slice *currSlice, DecodedPictureBuffer *p_Dpb, int picNum);
 
