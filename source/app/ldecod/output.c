@@ -61,7 +61,7 @@ static int io_write(int p_out, const void *buf, size_t n)
 #else
 static int io_write(int p_out, const void *buf, size_t n)
 {
-  return write(p_out, buf, n);
+  return write(p_out, buf, (unsigned int)n);
 }
 #endif
 

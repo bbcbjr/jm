@@ -95,7 +95,7 @@ void DeblockPicture(VideoParameters *p_Vid, StorablePicture *p)
 
   int j;
   #pragma omp parallel for schedule(dynamic)
-  for (j = 0; j < p->PicSizeInMbs; ++j)
+  for (j = 0; j < (int)p->PicSizeInMbs; ++j)
   {
     get_db_strength( p_Vid, p, j ) ;
   }
@@ -103,9 +103,10 @@ void DeblockPicture(VideoParameters *p_Vid, StorablePicture *p)
   #pragma omp parallel for schedule(dynamic)
   for (i = 0; i < k; i++)
   {
-    int nn;    
+    int nn;
     int n_last = imin(iheightMBs, (i >> 1) + 1);
-    int n_start = (i < p->PicWidthInMbs) ? 0 : ((i - p->PicWidthInMbs) >> 1) + 1;
+    int n_start =
+        (i < (int)p->PicWidthInMbs) ? 0 : ((i - (int)p->PicWidthInMbs) >> 1) + 1;
 
     for (nn = n_start; nn < n_last; nn += GROUP_SIZE)
       DeblockParallel(p_Vid, p, i, nn, n_last);

@@ -81,6 +81,16 @@ endif()
 # example: place header files in different folders
 source_group( "Natvis Files" FILES ${NATVIS_FILES} )
 
-# set the folder where to place the projects
-set_target_properties( ${EXE_NAME}  PROPERTIES FOLDER app LINKER_LANGUAGE C )
+target_compile_options(ldecod
+  PRIVATE
+    $<$<CONFIG:Release>:/O2 /Ob2 /Oi /Ot /GL>
+)
 
+# set the folder where to place the projects
+set_target_properties(${EXE_NAME}
+  PROPERTIES
+    FOLDER app
+    LINKER_LANGUAGE C
+    LINK_FLAGS_RELEASE "/LTCG /OPT:REF /OPT:ICF"
+    STATIC_LIBRARY_OPTIONS_RELEASE "/LTCG"
+)
