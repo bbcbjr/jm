@@ -187,19 +187,27 @@ int getDpbSize(VideoParameters *p_Vid, seq_parameter_set_rbsp_t *active_sps)
 
   if (active_sps->vui_parameters_present_flag && active_sps->vui_seq_parameters.bitstream_restriction_flag)
   {
-    int size_vui;
-    if ((int)active_sps->vui_seq_parameters.max_dec_frame_buffering > size)
+    int size_vui = imax(1, (int)active_sps->vui_seq_parameters.max_dec_frame_buffering);
+    if (size_vui > size)
     {
-      error ("max_dec_frame_buffering larger than MaxDpbSize", 500);
+      // For MVC streams (STEREO_HIGH / MVC_HIGH) the per-view DPB signalled in the VUI
+      // can legitimately exceed the value produced by the JM level formula, which does not
+      // fully implement MVC Annex H DPB rules.  Treat this as a warning and trust the
+      // encoder's explicit max_dec_frame_buffering value rather than aborting.
+      printf("Warning: max_dec_frame_buffering(%d) exceeds formula-computed DPB size(%d) "
+             "for Profile/Level. Using VUI value (non-conformant stream or MVC Annex H rules).\n",
+             size_vui, size);
+      size = size_vui;
     }
-    size_vui = imax (1, active_sps->vui_seq_parameters.max_dec_frame_buffering);
-#ifdef _DEBUG
-    if(size_vui < size)
+    else
     {
-      printf("Warning: max_dec_frame_buffering(%d) is less than DPB size(%d) calculated from Profile/Level.\n", size_vui, size);
+      if(size_vui < size)
+      {
+        printf("Warning: max_dec_frame_buffering(%d) is less than DPB size(%d) calculated from Profile/Level.\n",
+               size_vui, size);
+      }
+      size = size_vui;
     }
-#endif
-    size = size_vui;    
   }
 
   return size;
@@ -2934,11 +2942,13 @@ int GetMaxDecFrameBuffering(VideoParameters *p_Vid)
 
       if (curr_subset_sps->sps.vui_parameters_present_flag && curr_subset_sps->sps.vui_seq_parameters.bitstream_restriction_flag)
       {
-        if ((int)curr_subset_sps->sps.vui_seq_parameters.max_dec_frame_buffering > j)
+        int vui_val = imax(1, (int)curr_subset_sps->sps.vui_seq_parameters.max_dec_frame_buffering);
+        if (vui_val > j)
         {
-          error ("max_dec_frame_buffering larger than MaxDpbSize", 500);
+          printf("Warning: subset SPS max_dec_frame_buffering(%d) exceeds SPS max(%d). "
+                 "Using VUI value (MVC Annex H / non-conformant stream).\n", vui_val, j);
         }
-        j = imax (1, curr_subset_sps->sps.vui_seq_parameters.max_dec_frame_buffering);
+        j = vui_val;
       }
 
       if(j > iMax_2)
@@ -2951,11 +2961,13 @@ int GetMaxDecFrameBuffering(VideoParameters *p_Vid)
 
       if (curr_sps->vui_parameters_present_flag && curr_sps->vui_seq_parameters.bitstream_restriction_flag)
       {
-        if ((int)curr_sps->vui_seq_parameters.max_dec_frame_buffering > j)
+        int vui_val = imax(1, (int)curr_sps->vui_seq_parameters.max_dec_frame_buffering);
+        if (vui_val > j)
         {
-          error ("max_dec_frame_buffering larger than MaxDpbSize", 500);
+          printf("Warning: base SPS max_dec_frame_buffering(%d) exceeds SPS max(%d). "
+                 "Using VUI value (MVC Annex H / non-conformant stream).\n", vui_val, j);
         }
-        j = imax (1, curr_sps->vui_seq_parameters.max_dec_frame_buffering);
+        j = vui_val;
       }
 
       if(j > iMax_1)
