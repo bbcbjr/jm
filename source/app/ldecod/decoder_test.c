@@ -345,4 +345,26 @@ int main(int argc, char **argv)
   return 0;
 }
 
-
+/*
+ * Externally-triggered early termination for an active decode.
+ *
+ * Reads the process-global decoder pointer p_Dec set up by OpenDecoder;
+ * if no decoder is active (p_Dec == NULL), returns without doing
+ * anything. Otherwise calls jm_demux_stop on the decoder's video
+ * context, which closes the internal NALU demux queue. The decode
+ * thread's blocking jm_nalu_queue_pop then returns end-of-stream and
+ * the surrounding ldecod_decode() unwinds normally.
+ *
+ * Callable from any thread other than the one currently inside
+ * ldecod_decode(). Idempotent: stopping an already-closed queue is a
+ * no-op on the JM side. Public API entry point is
+ * ldecod_api_stop_decoding() in ldecod_api.h; the wrapper exists so
+ * the public namespace stays ldecod_api_*.
+ */
+void ldecod_stop_decoding(void)
+{
+  DecoderParams *pDecoder = p_Dec;
+  if (!pDecoder)
+    return;
+  jm_demux_stop(pDecoder->p_Vid);
+}
